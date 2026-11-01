@@ -57,20 +57,36 @@ LP value; neither a fixed share price nor a fixed post-launch token supply is as
 
 ## Reported defects and limits
 
-Two concrete failures are recorded in the repository-root `.imd-findings.json`, each with
-self-contained Foundry proof source:
+The two share-supply defects reported in the previous round (a deposit overflowing
+`totalShares + VIRTUAL_SHARES`, and worthless shares blocking recapitalization) were fixed by the
+implementation (`MAX_TOTAL_SHARES`, share epochs) and are covered by its `ShareSupply.t.sol`; the
+invariant still asserts the bounded share denominator.
 
-1. **High:** a reachable deposit can make `totalShares + VIRTUAL_SHARES` overflow, permanently
-   blocking an innocent LP's redemption despite sufficient unreserved collateral.
-2. **Medium:** three complete-loss/recapitalization cycles can inflate worthless outstanding
-   shares until even a one-token deposit overflows. A check that prevents the first defect's
-   final deposit does not resolve this independent recapitalization failure.
+This revision reports two new items in the repository-root `.imd-findings.json`:
 
-Both proofs were executed against the unchanged application and failed at the stated call.
-They remain in the findings rather than as passing tests that bless broken behavior. To
-reproduce, extract a finding's `proof` verbatim to a temporary `test/scratch/*.t.sol` file and
-run `forge test --match-path` on that file. The high-severity proof also passed against a
-scratch-only copy with a share-headroom guard; no such fix is included in the application.
+1. **Medium (with proof):** `settlementPending()` probes only `snapshot()`. When Core `roundPage`
+   fails or is rejected for a certified window, `settle` cannot run but the gate stays closed, so
+   every deposit and free-liquidity redemption reverts `SettlementPending` indefinitely. The
+   documentation says the gate fails open when the core cannot be read.
+2. **Low:** one-atom cover is accepted for a one-atom premium; each such policy must be settled
+   before LPs can move once its window is certified (`test_dustPoliciesMustEachBeSettledBeforeLpsCanMove`).
+
+To reproduce the medium finding, extract its `proof` verbatim to a temporary
+`test/scratch/*.t.sol` file and run `forge test --match-path` on it; it fails on the current code.
+
+## Revision for the settlement gate, lead cap and batch-limit changes
+
+- `SolvencyInvariant.t.sol`: `roundTrip` asserts both LP paths revert `SettlementPending` while a
+  certified policy is unsettled; a new invariant compares `openPolicyCount`, `earliestOpenEnd` and
+  `settlementPending` with a naive scan of all policies after every call.
+- `SettlementGateAdversarial.t.sol`: dust policies, later uncertified windows not blocking, both
+  pauses not hiding a pending settlement, check order (shares/amount before the gate), and a fuzzed
+  settlement order checked against the naive minimum.
+- `CoreReaderProperties.t.sol`: a batch limit other than 16 is no longer invalid; a fuzz test checks
+  any positive limit yields the same zero count. Invalid configuration cases are now genesis 0,
+  round duration 599/601 and batch limit 0.
+- `PolicyFailureMatrix.t.sol`: the 36-window matrix (1,674 rounds) now advances the clock so each
+  window starts inside `MAX_LEAD_ROUNDS`.
 
 The ordinary invariant campaigns exercise bounded random sequences, not every possible
 sequence. Their success does not negate these deterministic failures. The Core fixture

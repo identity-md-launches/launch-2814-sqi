@@ -27,6 +27,7 @@ contract CoverHandler is Test {
     uint256 public opened;
     uint256 public roundTrips;
     uint256 public rejectedSettlements;
+    uint256 public pendingRejections;
     mapping(uint64 round => bool active) public activeRounds;
     mapping(uint256 => bytes32) public policyTerms;
     mapping(uint256 => PolicyBook.Status) public policyStatus;
@@ -143,6 +144,22 @@ contract CoverHandler is Test {
         uint256 originalBalance = token.balanceOf(actor);
         uint256 originalAssets = pool.totalAssets();
         uint256 originalReserved = pool.reserved();
+        if (book.settlementPending()) {
+            // A certified but unsettled policy makes the share price stale: both LP paths must refuse.
+            uint256 amount = bound(amountSeed, 1, Math.max(originalBalance, 1));
+            vm.startPrank(actor);
+            token.approve(address(pool), amount);
+            vm.expectRevert(CoverPool.SettlementPending.selector);
+            pool.deposit(amount, 1);
+            uint256 held = pool.sharesOf(actor);
+            if (held != 0) {
+                vm.expectRevert(CoverPool.SettlementPending.selector);
+                pool.redeem(held, 1);
+            }
+            vm.stopPrank();
+            ++pendingRejections;
+            return;
+        }
         for (uint256 i; i < cycles; ++i) {
             uint256 balance = token.balanceOf(actor);
             if (balance == 0) break;
@@ -269,10 +286,14 @@ contract SolvencyInvariantTest is CoverFixture {
 
     function invariant_allObligationsRemainFullyBacked() public view {
         uint256 obligations;
+        uint256 openCount;
+        uint64 earliest;
         for (uint256 id = 1; id < book.nextPolicyId(); ++id) {
             PolicyBook.Policy memory p = book.getPolicy(id);
             (address beneficiary, uint256 reservedCover) = pool.reservations(id);
             if (p.status == PolicyBook.Status.Open) {
+                ++openCount;
+                if (earliest == 0 || p.endRound < earliest) earliest = p.endRound;
                 obligations += p.cover;
                 assertEq(reservedCover, p.cover);
                 assertEq(beneficiary, p.holder);
@@ -282,6 +303,13 @@ contract SolvencyInvariantTest is CoverFixture {
             }
         }
         assertEq(pool.reserved(), obligations);
+        assertEq(book.openPolicyCount(), openCount, "open policy count drifted");
+        assertEq(book.earliestOpenEnd(), earliest, "earliest open end differs from naive minimum");
+        assertEq(
+            book.settlementPending(),
+            earliest != 0 && earliest <= handler.core().frontier(),
+            "LP gate disagrees with certified open policies"
+        );
         _assertSolvent();
     }
 
@@ -360,6 +388,23 @@ contract SolvencyInvariantTest is CoverFixture {
         assertEq(handler.roundTrips(), 16);
         assertEq(handler.rejectedSettlements(), 2);
         assertEq(uint8(book.getPolicy(1).status), uint8(PolicyBook.Status.Expired));
+        invariant_allObligationsRemainFullyBacked();
+        invariant_assetsAreConservedAndSharesReconcile();
+        invariant_policyTermsAndTerminalStatesMatchPurchaseHistory();
+    }
+
+    function test_handlerLpFlowsRefuseStalePriceUntilAnyoneSettles() public {
+        handler.roundTrip(0, 1 ether, 1);
+        handler.open(1, 100 ether, 0, 0);
+        handler.advance(7, 0);
+        assertTrue(book.settlementPending());
+        handler.roundTrip(0, 1 ether, 4);
+        assertEq(handler.pendingRejections(), 1);
+        assertEq(handler.roundTrips(), 1);
+        handler.settle(1, 2);
+        assertFalse(book.settlementPending());
+        handler.roundTrip(0, 1 ether, 4);
+        assertEq(handler.roundTrips(), 5);
         invariant_allObligationsRemainFullyBacked();
         invariant_assetsAreConservedAndSharesReconcile();
         invariant_policyTermsAndTerminalStatesMatchPurchaseHistory();

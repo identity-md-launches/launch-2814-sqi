@@ -68,12 +68,13 @@ contract CoreReaderPropertiesTest is CoverFixture {
         vm.prank(alice);
         token.approve(address(book), 100 ether);
         uint256 holderBalance = token.balanceOf(alice);
+        // A batch limit other than 16 is no longer a corruption: the reader pages by min(limit, 16).
         for (uint256 corruption; corruption < 4; ++corruption) {
             ISqueekCore.CoreConfiguration memory config = core.configuration();
             if (corruption == 0) config.genesisTimestamp = 0;
             else if (corruption == 1) config.roundDuration = 601;
             else if (corruption == 2) config.maxRoundsPerBatch = 0;
-            else config.maxRoundsPerBatch = 17;
+            else config.roundDuration = 599;
             vm.mockCall(address(core), request, abi.encode(config));
             vm.expectRevert(CoreReader.InvalidConfiguration.selector);
             vm.prank(alice);
@@ -84,6 +85,26 @@ contract CoreReaderPropertiesTest is CoverFixture {
             assertEq(token.balanceOf(alice), holderBalance);
             assertEq(token.allowance(alice, address(book)), 100 ether);
             vm.clearMockedCalls();
+        }
+    }
+
+    /// @dev Any positive batch limit must give the same count as the published limit of 16.
+    function testFuzz_countIsIndependentOfCoreBatchLimit(uint256 mask, uint16 limitSeed) public {
+        uint16 zeros;
+        for (uint64 i; i < 144; ++i) {
+            if ((mask >> i) & 1 == 1) core.record(START + i, i + 1);
+            else ++zeros;
+        }
+        _certify(START + 143);
+        assertEq(reader.countZeroRounds(START, 144), zeros);
+        core.setBatchLimit(uint16(bound(limitSeed, 1, type(uint16).max)));
+        assertEq(reader.countZeroRounds(START, 144), zeros);
+        assertEq(reader.countZeroRounds(START + 120, 24), zeros - _zerosBefore(mask, 120));
+    }
+
+    function _zerosBefore(uint256 mask, uint64 n) private pure returns (uint16 zeros) {
+        for (uint64 i; i < n; ++i) {
+            if ((mask >> i) & 1 == 0) ++zeros;
         }
     }
 

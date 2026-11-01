@@ -20,6 +20,9 @@ contract PolicyFailureMatrixTest is CoverFixture {
                 uint16 z = _requiredZeros(product) - 1 + edge;
                 uint256 slot = product * 3 + edge;
                 zeros[slot] = z;
+                // Sell each window one round ahead of the clock so all 1674 rounds stay within the
+                // MAX_LEAD_ROUNDS horizon; the frontier stays at 100, so nothing is certified yet.
+                vm.warp(uint256(GENESIS) + (uint256(cursor) - 2) * 600);
                 (uint256 id, uint256 premium) = _openAt(alice, cursor, n, _threshold(product), 1 ether);
                 assertEq(id, slot + 1);
                 totalPremium += premium;
