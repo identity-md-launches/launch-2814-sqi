@@ -3,9 +3,9 @@ pragma solidity 0.8.26;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
-import {SepoliaOnly} from "./SepoliaOnly.sol";
 
-abstract contract Managed is Ownable2Step, SepoliaOnly {
+/// @dev Explicit owner argument: the launch factory is the constructor caller and must never become owner.
+abstract contract Managed is Ownable2Step {
     error RenounceDisabled();
 
     constructor(address owner_) Ownable(owner_) {}

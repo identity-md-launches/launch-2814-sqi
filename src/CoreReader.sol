@@ -3,11 +3,11 @@ pragma solidity 0.8.26;
 
 import {ISqueekCore} from "./interfaces/ISqueekCore.sol";
 import {CoverTerms} from "./CoverTerms.sol";
-import {SepoliaOnly} from "./SepoliaOnly.sol";
 
 /// @notice Reads certified V3 history only. Has no privileged role or write path into SqueekCore.
-contract CoreReader is SepoliaOnly {
+contract CoreReader {
     uint64 public constant ROUND_DURATION = 600;
+    /// @dev Records requested per page; the live core limit is honored when it is smaller.
     uint256 public constant PAGE_SIZE = 16;
     uint64 public constant CORE_VERSION = 3;
     ISqueekCore public immutable core;
@@ -26,6 +26,53 @@ contract CoreReader is SepoliaOnly {
     }
 
     function snapshot() public view returns (uint64 frontier, uint64 currentRound, bool paused) {
+        (frontier, currentRound, paused,) = _snapshot();
+    }
+
+    /// @notice Counts absent active records only after every requested round is certified.
+    /// @dev At most nine 16-record pages for the maximum 144-round policy at the published batch limit.
+    /// A core that lowers its batch limit is paged in smaller steps; a raised limit changes nothing.
+    /// Pause does not hide history.
+    function countZeroRounds(uint64 startRound, uint16 rounds) external view returns (uint16 zeroRounds) {
+        uint64 end = CoverTerms.endRound(startRound, rounds);
+        (uint64 frontier,,, uint256 pageSize) = _snapshot();
+        if (end > frontier) revert UnknownRounds(end, frontier);
+
+        uint64 cursor = startRound - 1;
+        uint256 active = 0;
+        bool first = true;
+        ISqueekCore.LedgerPosition memory previousEnd;
+        while (cursor < end) {
+            ISqueekCore.RoundPage memory page;
+            try core.roundPage(cursor, end, pageSize) returns (ISqueekCore.RoundPage memory result) {
+                page = result;
+            } catch {
+                revert CoreUnavailable();
+            }
+            if (
+                page.certifiedThroughRound <= cursor || page.certifiedThroughRound > end
+                    || page.rounds.length > pageSize
+                    || (page.certifiedThroughRound < end && page.rounds.length != pageSize)
+                    || (!first && !_samePosition(page.start, previousEnd))
+            ) revert MalformedPage();
+
+            _validatePage(page, cursor);
+            active += page.rounds.length;
+            cursor = page.certifiedThroughRound;
+            previousEnd = page.end;
+            first = false;
+        }
+        // Strictly increasing record IDs in the certified range imply active <= rounds.
+        zeroRounds = uint16(uint256(rounds) - active);
+    }
+
+    /// @dev Version and round duration are deliberate fail-closed pins. The batch limit only has to be
+    /// positive: paging adapts to it, so a raised limit cannot strand certified settlements.
+    function _snapshot()
+        private
+        view
+        returns (uint64 frontier, uint64 currentRound, bool paused, uint256 pageSize)
+    {
         _checkCore();
         ISqueekCore.CoreConfiguration memory config;
         try core.configuration() returns (ISqueekCore.CoreConfiguration memory result) {
@@ -35,8 +82,9 @@ contract CoreReader is SepoliaOnly {
         }
         if (
             config.genesisTimestamp == 0 || config.roundDuration != ROUND_DURATION
-                || config.maxRoundsPerBatch != PAGE_SIZE
+                || config.maxRoundsPerBatch == 0
         ) revert InvalidConfiguration();
+        pageSize = config.maxRoundsPerBatch < PAGE_SIZE ? config.maxRoundsPerBatch : PAGE_SIZE;
         uint256 current = 0;
         if (block.timestamp >= config.genesisTimestamp) {
             current = (block.timestamp - config.genesisTimestamp) / ROUND_DURATION + 1;
@@ -49,41 +97,6 @@ contract CoreReader is SepoliaOnly {
             revert InconsistentCore();
         }
         paused = state.paused;
-    }
-
-    /// @notice Counts absent active records only after every requested round is certified.
-    /// @dev At most nine 16-record pages for the maximum 144-round policy. Pause does not hide history.
-    function countZeroRounds(uint64 startRound, uint16 rounds) external view returns (uint16 zeroRounds) {
-        uint64 end = CoverTerms.endRound(startRound, rounds);
-        (uint64 frontier,,) = snapshot();
-        if (end > frontier) revert UnknownRounds(end, frontier);
-
-        uint64 cursor = startRound - 1;
-        uint256 active = 0;
-        bool first = true;
-        ISqueekCore.LedgerPosition memory previousEnd;
-        while (cursor < end) {
-            ISqueekCore.RoundPage memory page;
-            try core.roundPage(cursor, end, PAGE_SIZE) returns (ISqueekCore.RoundPage memory result) {
-                page = result;
-            } catch {
-                revert CoreUnavailable();
-            }
-            if (
-                page.certifiedThroughRound <= cursor || page.certifiedThroughRound > end
-                    || page.rounds.length > PAGE_SIZE
-                    || (page.certifiedThroughRound < end && page.rounds.length != PAGE_SIZE)
-                    || (!first && !_samePosition(page.start, previousEnd))
-            ) revert MalformedPage();
-
-            _validatePage(page, cursor);
-            active += page.rounds.length;
-            cursor = page.certifiedThroughRound;
-            previousEnd = page.end;
-            first = false;
-        }
-        // Strictly increasing record IDs in the certified range imply active <= rounds.
-        zeroRounds = uint16(uint256(rounds) - active);
     }
 
     function _validatePage(ISqueekCore.RoundPage memory page, uint64 cursor) private pure {

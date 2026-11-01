@@ -10,10 +10,15 @@ contract MockCore is ISqueekCore {
     bool public paused;
     uint64 public version = 3;
     bool public unavailable;
+    uint16 public batchLimit = 16;
     RoundCheckpoint[] private _records;
 
     constructor(uint64 genesis_) {
         genesis = genesis_;
+    }
+
+    function setBatchLimit(uint16 value) external {
+        batchLimit = value;
     }
 
     function setFrontier(uint64 value) external {
@@ -57,7 +62,7 @@ contract MockCore is ISqueekCore {
         result.genesisTimestamp = genesis;
         result.roundDuration = 600;
         result.maxWorkPerRound = 10_000;
-        result.maxRoundsPerBatch = 16;
+        result.maxRoundsPerBatch = batchLimit;
         result.initialWorkPerThousandBlocks = 10_875;
         result.targetBlocksPerActiveRound = 40;
         result.difficultySmoothingRounds = 30;
@@ -82,7 +87,10 @@ contract MockCore is ISqueekCore {
         returns (RoundPage memory result)
     {
         require(!unavailable, "fixture: unavailable");
-        require(afterRound <= throughRound && throughRound <= frontier && maxRecords <= 16, "fixture: bounds");
+        require(
+            afterRound <= throughRound && throughRound <= frontier && maxRecords <= batchLimit,
+            "fixture: bounds"
+        );
         result.start = _positionAt(afterRound);
         result.certifiedThroughRound = throughRound;
         RoundCheckpoint[] memory records = new RoundCheckpoint[](maxRecords);

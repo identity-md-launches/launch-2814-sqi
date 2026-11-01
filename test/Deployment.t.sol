@@ -7,7 +7,6 @@ import {PremiumModel} from "../src/PremiumModel.sol";
 import {CoverPool} from "../src/CoverPool.sol";
 import {CoreReader} from "../src/CoreReader.sol";
 import {PolicyBook} from "../src/PolicyBook.sol";
-import {SepoliaOnly} from "../src/SepoliaOnly.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract ApplicationFactoryHarness {
@@ -62,19 +61,23 @@ contract DeploymentTest is Test {
         new PolicyBook(owner, dependency, dependency, dependency, dependency);
     }
 
-    function test_deploymentOnMainnetIsRejectedForEveryApplication() public {
-        vm.chainId(1);
-        bytes memory wrongChain = abi.encodeWithSelector(SepoliaOnly.WrongChain.selector, uint256(1));
-        vm.expectRevert(wrongChain);
-        new MockSQK(address(this));
-        vm.expectRevert(wrongChain);
-        new PremiumModel(address(this));
-        vm.expectRevert(wrongChain);
-        new CoverPool(address(this), CORE);
-        vm.expectRevert(wrongChain);
-        new CoreReader(CORE);
-        vm.expectRevert(wrongChain);
-        new PolicyBook(address(this), CORE, CORE, CORE, CORE);
+    /// @dev The launch rehearses constructors on an empty chain whose id it chooses; nothing may depend on it.
+    function test_constructorsDoNotDependOnChainIdOrCaller() public {
+        uint256[3] memory chains = [uint256(31_337), 1, 11_155_111];
+        address owner = makeAddr("launch-owner");
+        for (uint256 i; i < chains.length; ++i) {
+            vm.chainId(chains[i]);
+            ApplicationFactoryHarness factory = new ApplicationFactoryHarness();
+            vm.prank(makeAddr("launch-wallet"), makeAddr("launch-wallet"));
+            address[5] memory apps = factory.deploy(owner, CORE);
+            assertEq(MockSQK(apps[0]).owner(), owner);
+            assertEq(PremiumModel(apps[1]).owner(), owner);
+            assertEq(CoverPool(apps[2]).owner(), owner);
+            assertEq(PolicyBook(apps[4]).owner(), owner);
+            assertEq(MockSQK(apps[0]).balanceOf(owner), 100_000_000 ether);
+            assertEq(MockSQK(apps[0]).balanceOf(address(factory)), 0);
+            assertEq(MockSQK(apps[0]).balanceOf(makeAddr("launch-wallet")), 0);
+        }
     }
 
     function test_zeroOwnersAndDependencyAddressesRevert() public {

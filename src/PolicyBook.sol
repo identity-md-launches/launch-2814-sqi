@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Managed} from "./Managed.sol";
 import {CoverTerms} from "./CoverTerms.sol";
+import {OpenEndRounds} from "./OpenEndRounds.sol";
 import {PremiumModel} from "./PremiumModel.sol";
 import {CoreReader} from "./CoreReader.sol";
 import {CoverPool} from "./CoverPool.sol";
@@ -13,6 +14,7 @@ import {CoverPool} from "./CoverPool.sol";
 /// @notice Fixed-payout, zero-work round COVER using only certified SqueekCore history.
 contract PolicyBook is Managed, ReentrancyGuard {
     using SafeERC20 for IERC20;
+    using OpenEndRounds for OpenEndRounds.Set;
 
     enum Status {
         None,
@@ -33,6 +35,10 @@ contract PolicyBook is Managed, ReentrancyGuard {
         uint256 premium;
     }
 
+    /// @notice A window may start at most this many rounds (seven days) after the wall-clock round.
+    /// @dev Bounds how long one premium can keep LP capital reserved before the core can certify it.
+    uint64 public constant MAX_LEAD_ROUNDS = 1008;
+
     IERC20 public immutable token;
     PremiumModel public immutable premiumModel;
     CoverPool public immutable pool;
@@ -40,12 +46,15 @@ contract PolicyBook is Managed, ReentrancyGuard {
     bool public paused;
     uint256 public nextPolicyId = 1;
     mapping(uint256 policyId => Policy) private _policies;
+    mapping(uint64 endRound => uint256[] policyIds) private _policyIdsByEnd;
+    OpenEndRounds.Set private _openEnds;
 
     error InvalidAddress();
     error NotConfigured();
     error OpeningPaused();
     error CorePaused();
     error StartNotFuture(uint64 startRound, uint64 frontier, uint64 currentRound);
+    error StartTooFar(uint64 startRound, uint64 latestAllowed);
     error DeadlineExpired();
     error PremiumExceeded(uint256 premium, uint256 maximum);
     error TokenAmountMismatch();
@@ -89,6 +98,41 @@ contract PolicyBook is Managed, ReentrancyGuard {
         return _policies[policyId];
     }
 
+    function openPolicyCount() external view returns (uint256) {
+        return _openEnds.count;
+    }
+
+    /// @notice Smallest end round among open policies, or zero when none is open.
+    function earliestOpenEnd() external view returns (uint64) {
+        return _openEnds.earliest;
+    }
+
+    /// @notice Ids of still-open policies whose window ends at `endRound`; the ones to settle first.
+    function openPolicyIdsEndingAt(uint64 endRound) external view returns (uint256[] memory ids) {
+        uint256[] storage all = _policyIdsByEnd[endRound];
+        ids = new uint256[](all.length);
+        uint256 count;
+        for (uint256 i; i < all.length; ++i) {
+            if (_policies[all[i]].status == Status.Open) ids[count++] = all[i];
+        }
+        assembly ("memory-safe") {
+            mstore(ids, count)
+        }
+    }
+
+    /// @notice True while some open policy is fully certified but not yet settled.
+    /// @dev The pool refuses deposits and redemptions in that state so nobody trades at a share price that
+    /// public history has already made stale. An unreadable core settles nothing, so it does not block.
+    function settlementPending() external view returns (bool) {
+        uint64 earliest = _openEnds.earliest;
+        if (earliest == 0) return false;
+        try reader.snapshot() returns (uint64 frontier, uint64, bool) {
+            return earliest <= frontier;
+        } catch {
+            return false;
+        }
+    }
+
     function quote(uint64 startRound, uint16 rounds, uint16 thresholdBps, uint256 cover)
         public
         view
@@ -105,6 +149,8 @@ contract PolicyBook is Managed, ReentrancyGuard {
         if (startRound <= frontier || startRound <= currentRound) {
             revert StartNotFuture(startRound, frontier, currentRound);
         }
+        uint256 latestAllowed = uint256(currentRound) + MAX_LEAD_ROUNDS;
+        if (startRound > latestAllowed) revert StartTooFar(startRound, uint64(latestAllowed));
         (premium,) = premiumModel.quote(rounds, thresholdBps, cover, pool.totalAssets(), pool.reserved());
     }
 
@@ -132,6 +178,8 @@ contract PolicyBook is Managed, ReentrancyGuard {
             cover: cover,
             premium: premium
         });
+        _policyIdsByEnd[endRound].push(policyId);
+        _openEnds.add(endRound);
 
         uint256 beforeBalance = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), premium);
@@ -152,6 +200,7 @@ contract PolicyBook is Managed, ReentrancyGuard {
         bool covered = CoverTerms.triggered(zeros, policy.rounds, policy.thresholdBps);
         policy.zeroRounds = zeros;
         policy.status = covered ? Status.Paid : Status.Expired;
+        _openEnds.remove(policy.endRound);
         if (covered) payout = policy.cover;
         pool.resolveCover(policyId, covered);
         emit PolicySettled(policyId, zeros, payout);

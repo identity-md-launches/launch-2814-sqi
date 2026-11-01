@@ -47,6 +47,7 @@ contract CoverHandler is Test {
         uint256 balance = token.balanceOf(actor);
         if (balance == 0) return;
         uint256 amount = bound(amountSeed, 1, balance);
+        if (book.settlementPending()) return;
         uint256 shares = pool.previewDeposit(amount);
         if (shares == 0) return;
         vm.startPrank(actor);
@@ -62,7 +63,7 @@ contract CoverHandler is Test {
             pool.freeAssets(), pool.totalShares() + pool.VIRTUAL_SHARES(), pool.totalAssets() + 1
         );
         maximum = Math.min(maximum, pool.sharesOf(actor));
-        if (maximum == 0) return;
+        if (maximum == 0 || book.settlementPending()) return;
         uint256 shares = bound(shareSeed, 1, maximum);
         uint256 assets = pool.previewRedeem(shares);
         if (assets == 0) return;
@@ -109,6 +110,8 @@ contract CoverHandler is Test {
         uint256 id = bound(idSeed, 1, count);
         PolicyBook.Policy memory policy = book.getPolicy(id);
         if (policy.status != PolicyBook.Status.Open || policy.endRound > core.frontier()) return;
+        assertTrue(book.settlementPending());
+        assertLe(book.earliestOpenEnd(), policy.endRound);
         uint256 zeros;
         for (uint64 r = policy.startRound; r <= policy.endRound; ++r) {
             if (!activeRounds[r]) ++zeros;
