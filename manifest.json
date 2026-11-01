@@ -1,0 +1,32 @@
+{
+  "kind": "evm_contracts",
+  "contracts": [
+    {
+      "contract": "MockSQK",
+      "constructorArgs": ["$owner"]
+    },
+    {
+      "contract": "PremiumModel",
+      "constructorArgs": ["$owner"]
+    },
+    {
+      "contract": "CoverPool",
+      "constructorArgs": ["$owner", "$contract:MockSQK"]
+    },
+    {
+      "contract": "CoreReader",
+      "constructorArgs": ["0x74665dAecA35A2303e767E76a2FF1FB6F93e119f"]
+    },
+    {
+      "contract": "PolicyBook",
+      "constructorArgs": [
+        "$owner",
+        "$contract:MockSQK",
+        "$contract:PremiumModel",
+        "$contract:CoverPool",
+        "$contract:CoreReader"
+      ]
+    }
+  ],
+  "notes": "Sepolia only (11155111). Application deployment handoff; the launch service produces its own launch.json. Owner must bind CoverPool.setPolicyBook to the deployed PolicyBook once and configure the twelve PremiumModel.setRate entries before use. Initial MockSQK supply is 100000000 SQI with 18 decimals, minted to $owner; only the owner may mint additional mock collateral. No real SQK, native-value funding, proxies, upgrades, core writes, UI or keepers. See LAUNCH.md for activation and review responsibilities."
+}
