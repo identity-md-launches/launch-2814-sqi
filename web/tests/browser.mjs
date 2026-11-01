@@ -309,6 +309,11 @@ async function fixturePage(
       return route.abort();
     if (s.offline) return route.abort();
     const payload = req.postDataJSON();
+    if (s.hang) {
+      // Simulates every public RPC accepting the request and never answering.
+      await new Promise((r) => setTimeout(r, s.hang));
+      return route.abort().catch(() => {});
+    }
     const resolveCall = async (call) => {
       try {
         if (
@@ -639,15 +644,15 @@ try {
     );
     s.delayQuote = 0;
     s.configured = false;
-    await page.getByRole("button", { name: "Get quote", exact: true }).click();
+    await page.getByRole("button", { name: /^(Get|Retry) quote$/ }).click();
     await waitText(page, "The pool is not bound");
     s.configured = true;
     s.rate = false;
-    await page.getByRole("button", { name: "Get quote", exact: true }).click();
+    await page.getByRole("button", { name: /^(Get|Retry) quote$/ }).click();
     await waitText(page, "no configured premium rate");
     s.rate = true;
     s.paused = true;
-    await page.getByRole("button", { name: "Get quote", exact: true }).click();
+    await page.getByRole("button", { name: /^(Get|Retry) quote$/ }).click();
     await waitText(page, "New COVER is paused");
     await context.close();
   });
@@ -666,7 +671,7 @@ try {
         .evaluate((e) => e === document.activeElement),
     );
     s.offline = false;
-    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
     await waitText(page, "App code & dependency checks passed");
     await page.waitForFunction(
       () => document.querySelectorAll(".metric .unavailable").length === 0,
@@ -931,6 +936,142 @@ try {
     await waitText(page, "not enough free pool liquidity");
     await page.locator(".token-note a").click();
     assert.ok(page.url().endsWith("#risks"));
+    await context.close();
+  });
+  await test("Hung RPCs: spinners stop at the deadline and errors sit under the button", async () => {
+    const s = state();
+    s.hang = 30_000;
+    const { page, context } = await fixturePage(browser, s);
+    const started = Date.now();
+    await waitText(page, "Reading Sepolia");
+    await page
+      .getByRole("button", { name: "Retry", exact: true })
+      .waitFor({ timeout: 11_000 });
+    const liveSeconds = (Date.now() - started) / 1000;
+    assert.match(
+      await page.locator("#live-error").innerText(),
+      /took longer than 8 seconds|Sepolia could not be reached/,
+    );
+    await page.getByRole("button", { name: "Get quote", exact: true }).click();
+    const quoteStarted = Date.now();
+    await page
+      .getByRole("button", { name: "Reading quote…", exact: true })
+      .waitFor({ timeout: 2_000 });
+    const retry = page.getByRole("button", { name: "Retry quote", exact: true });
+    await retry.waitFor({ timeout: 11_000 });
+    const quoteSeconds = (Date.now() - quoteStarted) / 1000;
+    assert.ok(quoteSeconds < 10, `quote spinner ran ${quoteSeconds}s`);
+    const placement = await retry.evaluate((button) => ({
+      next: button.nextElementSibling?.id,
+      text: button.nextElementSibling?.textContent,
+      describedBy: button.getAttribute("aria-describedby"),
+      className: button.className,
+      gap:
+        button.nextElementSibling.getBoundingClientRect().top -
+        button.getBoundingClientRect().bottom,
+    }));
+    assert.equal(placement.next, "cover-error");
+    assert.equal(placement.describedBy, "cover-error");
+    assert.match(
+      placement.text,
+      /took longer than 8 seconds|Sepolia could not be reached/,
+    );
+    assert.match(placement.className, /failed/);
+    assert.ok(placement.gap < 24);
+    // Recovery: RPCs answer again, the same button retries successfully.
+    s.hang = 0;
+    await retry.click();
+    await waitText(page, "Review your quote");
+    s.hang = 30_000;
+    await page.getByRole("tab", { name: "Settle" }).click();
+    await page.locator("#policy-id").fill("1");
+    await page.getByRole("button", { name: "Look up policy" }).click();
+    const lookup = page.getByRole("button", {
+      name: "Retry lookup",
+      exact: true,
+    });
+    await lookup.waitFor({ timeout: 11_000 });
+    assert.equal(
+      await lookup.evaluate((b) => b.nextElementSibling?.id),
+      "policy-error",
+    );
+    await page.getByRole("tab", { name: "Liquidity" }).click();
+    await page.locator("#lp-amount").fill("10");
+    await page.getByRole("button", { name: "Preview deposit" }).click();
+    const preview = page.getByRole("button", {
+      name: "Retry deposit",
+      exact: true,
+    });
+    await preview.waitFor({ timeout: 11_000 });
+    assert.equal(
+      await preview.evaluate((b) => b.nextElementSibling?.id),
+      "lp-error",
+    );
+    await context.close();
+    return {
+      liveReadCappedSeconds: Number(liveSeconds.toFixed(1)),
+      quoteCappedSeconds: Number(quoteSeconds.toFixed(1)),
+      errorPlacement: "directly under the action button (quote, lookup, preview)",
+    };
+  });
+  await test("How COVER pays out explains Core, frontier, terms, settlement and LPs; token chips", async () => {
+    const s = state();
+    s.configured = false;
+    const { page, context } = await fixturePage(browser, s);
+    const how = page.locator("#how");
+    for (const text of [
+      "A buyer pays an mSQK premium for a fixed payout C.",
+      "about 10 minutes per round",
+      "Only rounds at or before the certified frontier count.",
+      "missing active record inside certified history counts as",
+      "Rounds past the frontier are unknown.",
+      "If Core lags, settlement can wait indefinitely.",
+      "6, 12, 24 or 144 rounds",
+      "30%, 50% or 70% zero-work",
+      "pool reserves C",
+      "anyone may",
+      "The premium stays in the pool either way.",
+      "Early settlement is allowed",
+      "A deposit mints shares",
+      "Reservations have no automatic timeout.",
+      "zero-work rounds / N ≥ T → payout C",
+    ])
+      assert.ok((await how.getByText(text, { exact: false }).count()) > 0, text);
+    assert.equal(await how.locator("details summary").count(), 1);
+    const order = await how.evaluate((section) => {
+      const all = section.innerText;
+      return [
+        all.indexOf("Where rounds come from"),
+        all.indexOf("Early settlement and LP gate details"),
+      ];
+    });
+    assert.ok(order[0] > 0 && order[0] < order[1]);
+    assert.ok(!/insurance/i.test(await page.locator("body").innerText()));
+    assert.equal(
+      await page
+        .getByText("Illustrative window, not live round history.")
+        .count(),
+      1,
+    );
+    assert.equal(
+      await page.locator("#cover-token").innerText(),
+      "mSQK (on-chain symbol SQI)",
+    );
+    assert.match(
+      await page.locator("#cover-amount").getAttribute("aria-describedby"),
+      /cover-token/,
+    );
+    await waitText(page, "Demo pool not activated / unfunded");
+    await page.getByRole("tab", { name: "Liquidity" }).click();
+    assert.equal(
+      await page.locator("#lp-token").innerText(),
+      "mSQK (on-chain symbol SQI)",
+    );
+    await page.getByRole("radio", { name: "Redeem" }).check();
+    assert.equal(
+      await page.locator("#lp-token").innerText(),
+      "Pays out mSQK (on-chain symbol SQI)",
+    );
     await context.close();
   });
   await test("WebKit primary quote interaction", async () => {

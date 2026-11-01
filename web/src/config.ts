@@ -45,16 +45,20 @@ export const chain = defineChain({
   rpcUrls: { default: { http: RPC_URLS } },
   blockExplorers: { default: { name: "Etherscan", url: EXPLORER } },
 });
-const transport = () =>
+// Reads fail over quickly: each public RPC gets READ_TIMEOUT_MS before the next one
+// is tried, and every visible spinner is capped by READ_DEADLINE_MS (see withDeadline).
+export const READ_TIMEOUT_MS = 2_500;
+export const READ_DEADLINE_MS = 8_000;
+const transport = (timeout = 8_000) =>
   fallback(
     RPC_URLS.map((url) =>
-      http(url, { timeout: 8_000, retryCount: 0, batch: { wait: 20 } }),
+      http(url, { timeout, retryCount: 0, batch: { wait: 20 } }),
     ),
     { retryCount: 0 },
   );
 export const publicClient = createPublicClient({
   chain,
-  transport: transport(),
+  transport: transport(READ_TIMEOUT_MS),
   batch: { multicall: false },
 });
 export const walletConfig = createConfig({

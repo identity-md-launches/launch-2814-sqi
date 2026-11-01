@@ -84,12 +84,15 @@ function LiveDashboard({
           </p>
         </div>
         <button
-          className="button subtle"
+          className={
+            failed && !refreshing ? "button subtle failed" : "button subtle"
+          }
           onClick={onRefresh}
           disabled={refreshing}
+          aria-describedby={failed ? "live-error" : undefined}
         >
-          <Icon name="refresh" />
-          {refreshing ? "Refreshing…" : "Refresh"}
+          <Icon name={failed && !refreshing ? "alert" : "refresh"} />
+          {refreshing ? "Refreshing…" : failed ? "Retry" : "Refresh"}
         </button>
       </div>
       <div className="data-status small">
@@ -120,7 +123,7 @@ function LiveDashboard({
         <span className="refresh-note">Refreshes every 30 seconds</span>
       </div>
       {failed && (
-        <p role="status" className="notice error">
+        <p role="status" className="notice error" id="live-error">
           {explainError(error)}{" "}
           {snapshot
             ? "Values below are from the last successful read."
@@ -211,6 +214,24 @@ function LiveDashboard({
           </strong>
         </span>
       </div>
+      {snapshot &&
+      (snapshot.configured === false || snapshot.assets === 0n) ? (
+        <p className="small activation-note">
+          <Icon name="alert" size={16} />
+          <span>
+            Demo pool not activated / unfunded. Quotes may fail until the owner
+            binds PolicyBook, sets rates, and deposits liquidity (see{" "}
+            <a
+              href={`${REPO}/blob/main/LAUNCH.md`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              LAUNCH.md
+            </a>
+            ).
+          </span>
+        </p>
+      ) : null}
       {snapshot?.errors.length ? (
         <details className="read-errors">
           <summary>Some reads failed ({snapshot.errors.length})</summary>
@@ -361,6 +382,67 @@ function RoundDiagram() {
       <p className="small muted">
         Illustrative window, not live round history.
       </p>
+    </figure>
+  );
+}
+type DiagramRound = "work" | "zero" | "missing" | "unknown";
+const FRONTIER_EXAMPLE: DiagramRound[] = [
+  "work",
+  "zero",
+  "missing",
+  "work",
+  "zero",
+  "unknown",
+  "unknown",
+  "unknown",
+];
+const roundGlyph: Record<DiagramRound, string> = {
+  work: "W",
+  zero: "0",
+  missing: "∅",
+  unknown: "?",
+};
+function FrontierDiagram() {
+  return (
+    <figure className="frontier-diagram">
+      <div className="frontier-strip" aria-hidden="true">
+        {FRONTIER_EXAMPLE.map((kind, i) => (
+          <div
+            key={i}
+            className={`frontier-round ${kind}${i === 4 ? " at-frontier" : ""}`}
+          >
+            <span className="frontier-index">{i + 1}</span>
+            <span className="frontier-glyph">{roundGlyph[kind]}</span>
+          </div>
+        ))}
+      </div>
+      <div className="frontier-scale" aria-hidden="true">
+        <span>Certified history</span>
+        <span>Past the frontier</span>
+      </div>
+      <figcaption>
+        <ul className="frontier-legend small">
+          <li>
+            <span className="key work">W</span> Work recorded
+          </li>
+          <li>
+            <span className="key zero">0</span> Zero-work
+          </li>
+          <li>
+            <span className="key missing">∅</span> Missing active record,
+            counts as zero-work
+          </li>
+          <li>
+            <span className="key unknown">?</span> Unknown, never counted as
+            zero-work
+          </li>
+        </ul>
+        <p className="small muted">
+          Example only: rounds 1 to 5 are certified and 3 of them count as
+          zero-work. Rounds 6 to 8 are past the frontier, so they count for
+          nothing yet.
+        </p>
+      </figcaption>
     </figure>
   );
 }
@@ -565,55 +647,122 @@ export default function App() {
               </p>
             </div>
           </div>
-          <ol className="steps">
+          <p className="how-thesis">
+            A buyer pays an mSQK premium for a fixed payout C. The claim pays if,
+            over the next N certified SqueekCore rounds, the share of zero-work
+            rounds is at least T.
+          </p>
+          <div className="rule-line">
+            <strong>zero-work rounds / N ≥ T → payout C</strong>
+            <p className="small muted">
+              Premium stays in the pool in both outcomes. Only certified rounds
+              are counted; time passing alone never creates a zero-work round.
+            </p>
+          </div>
+          <ol className="steps how-steps">
             <li>
               <span className="step-number">01</span>
-              <h3>Choose the terms</h3>
-              <p>
-                Choose cover C, a window of 6, 12, 24 or 144 rounds, and a
-                threshold of 30%, 50% or 70%. Each clock round is 10 minutes.
-              </p>
+              <h3>Where rounds come from</h3>
+              <div className="step-body">
+                <p>
+                  SqueekCore advances on a clock of about 10 minutes per round,
+                  then certifies history up to its frontier.
+                </p>
+                <ul>
+                  <li>Only rounds at or before the certified frontier count.</li>
+                  <li>
+                    A missing active record inside certified history counts as
+                    zero-work.
+                  </li>
+                  <li>
+                    Rounds past the frontier are unknown. They do not count as
+                    zero-work just because time passed.
+                  </li>
+                  <li>If Core lags, settlement can wait indefinitely.</li>
+                </ul>
+                <FrontierDiagram />
+              </div>
             </li>
             <li>
               <span className="step-number">02</span>
-              <h3>Pay the premium</h3>
-              <p>
-                Approve mSQK and open the policy. The pool receives your premium
-                and reserves C. Pricing uses configured rates plus utilization.
-              </p>
+              <h3>Choose the terms</h3>
+              <div className="step-body">
+                <dl className="terms-list">
+                  <div>
+                    <dt>Window N</dt>
+                    <dd>6, 12, 24 or 144 rounds</dd>
+                  </div>
+                  <div>
+                    <dt>Threshold T</dt>
+                    <dd>30%, 50% or 70% zero-work</dd>
+                  </div>
+                  <div>
+                    <dt>Cover C</dt>
+                    <dd>Fixed payout in mSQK</dd>
+                  </div>
+                </dl>
+                <p>
+                  You approve mSQK and open the policy. The premium goes to
+                  CoverPool, and the pool reserves C until the policy settles.
+                  Pricing uses owner-set rates plus a utilization surcharge.
+                </p>
+              </div>
             </li>
             <li>
               <span className="step-number">03</span>
               <h3>Settle the outcome</h3>
-              <p>
-                Once the frontier reaches the inclusive end, anyone can settle.
-                If zero-work rounds / N ≥ T, the holder gets C. Otherwise there
-                is no payout.
-              </p>
+              <div className="step-body">
+                <p>
+                  Once the frontier reaches the inclusive end round, anyone may
+                  settle. The caller earns nothing; any payout goes to the
+                  holder.
+                </p>
+                <ul>
+                  <li>If zero-work rounds / N ≥ T, the holder receives C.</li>
+                  <li>Otherwise there is no payout.</li>
+                  <li>The premium stays in the pool either way.</li>
+                  <li>
+                    Early settlement is allowed when a certified prefix already
+                    decides the outcome: enough zero-work rounds to hit T, or
+                    too few rounds left to reach it.
+                  </li>
+                </ul>
+              </div>
+            </li>
+            <li>
+              <span className="step-number">04</span>
+              <h3>Liquidity providers</h3>
+              <div className="step-body">
+                <p>
+                  LPs fund the pool that pays C. A deposit mints shares; a
+                  redemption burns shares for free assets, never reserved ones.
+                </p>
+                <ul>
+                  <li>
+                    Gates can block LP deposits and redemptions while a
+                    certified policy needs settlement or review.
+                  </li>
+                  <li>Shares can lose all value through payouts.</li>
+                  <li>Reservations have no automatic timeout.</li>
+                </ul>
+              </div>
             </li>
           </ol>
-          <div className="rule-line">
-            <strong>zero-work rounds / N ≥ T → payout C</strong>
-            <p className="small muted">
-              Premium stays in the pool in both outcomes. A missing active
-              record inside certified history counts as zero-work. Rounds beyond
-              the frontier are unknown.
-            </p>
-          </div>
           <details className="technical-note">
-            <summary>Early settlement and LP reservations</summary>
+            <summary>Early settlement and LP gate details</summary>
             <p>
-              The deployed contract also allows settlement before the end when a
-              certified prefix makes the outcome certain: enough zero-work
-              rounds to trigger, or too few remaining rounds to reach the
-              threshold. A policy review can move the earliest decision round
-              and reopen the LP gate. Uncertified rounds never become zero-work
-              merely because time passes.
+              Settlement reads the certified prefix of the window. When its
+              zero-work count already reaches the required number, or the
+              remaining rounds can no longer lift it to T, the outcome is fixed
+              and settlement succeeds before the end round. Otherwise the
+              contract rejects it as undecided.
             </p>
             <p>
-              LP deposits mint shares; redemptions burn them for free assets.
-              Premiums add assets, payouts remove them. Shares may lose all
-              value, and reservations have no automatic timeout.
+              Review recomputes a policy&rsquo;s earliest decision round, which
+              can reopen the LP gate; it cannot force a refund. Premiums add
+              pool assets and payouts remove them, so share value moves with
+              outcomes. LP previews here apply a 0.5% minimum-output tolerance
+              and recheck the share epoch before sending.
             </p>
           </details>
         </section>

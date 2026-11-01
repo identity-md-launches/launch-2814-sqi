@@ -4,10 +4,11 @@ import {
   addresses,
   chain,
   publicClient,
+  READ_DEADLINE_MS,
   type ContractName,
 } from "./config";
 import runtime from "./runtime.json";
-import { explainError } from "./domain";
+import { explainError, withDeadline } from "./domain";
 
 const errors = Object.values(abis).flatMap((abi) =>
   abi.filter((item) => item.type === "error"),
@@ -46,7 +47,9 @@ export interface Snapshot {
   decide?: bigint;
   errors: string[];
 }
-export async function fetchSnapshot(): Promise<Snapshot> {
+export const fetchSnapshot = (): Promise<Snapshot> =>
+  withDeadline(readSnapshot(), READ_DEADLINE_MS, "Reading Sepolia");
+async function readSnapshot(): Promise<Snapshot> {
   if ((await publicClient.getChainId()) !== chain.id)
     throw new Error(
       "The public RPC returned the wrong chain. Reads and transactions are unavailable.",
@@ -132,7 +135,14 @@ export async function fetchSnapshot(): Promise<Snapshot> {
 
 // Check the deployed runtime against the compiler output, ignoring immutable slots,
 // then check every immutable dependency by its getter. No remote ABI is trusted.
-export async function verifyDeployment(): Promise<{ block: bigint }> {
+// Bytecode reads are larger, so the deployment check gets twice the read deadline.
+export const verifyDeployment = (): Promise<{ block: bigint }> =>
+  withDeadline(
+    checkDeployment(),
+    READ_DEADLINE_MS * 2,
+    "Checking the deployment",
+  );
+async function checkDeployment(): Promise<{ block: bigint }> {
   if ((await publicClient.getChainId()) !== chain.id)
     throw new Error(
       "Deployment verification failed: the RPC is not on Sepolia.",
@@ -213,11 +223,15 @@ export async function fetchPolicies(
     },
     (_, i) => before - BigInt(i) - 1n,
   ).filter((id) => id > 0n);
-  return await Promise.all(
-    ids.map(async (id) => ({
-      id,
-      policy: await read<Policy>("PolicyBook", "getPolicy", [id]),
-    })),
+  return await withDeadline(
+    Promise.all(
+      ids.map(async (id) => ({
+        id,
+        policy: await read<Policy>("PolicyBook", "getPolicy", [id]),
+      })),
+    ),
+    READ_DEADLINE_MS,
+    "Reading policies",
   );
 }
 export const transactionRequest = (

@@ -933,6 +933,174 @@ form > button.full {
   margin-block: 12px;
   max-inline-size: 78ch;
 }
+.how-thesis {
+  font-size: var(--text-lg);
+  line-height: 1.5;
+  max-inline-size: 52ch;
+  margin-block: 32px 24px;
+  text-wrap: pretty;
+}
+.how-steps {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 48px;
+  row-gap: 48px;
+  margin-block: 48px 0;
+}
+.step-body > * + * {
+  margin-block-start: 12px;
+}
+.step-body ul {
+  margin-block-end: 0;
+  padding-inline-start: 1.25em;
+  color: var(--muted);
+}
+.step-body li + li {
+  margin-block-start: 6px;
+}
+.terms-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.terms-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block-end: 8px;
+  border-block-end: 1px solid var(--line);
+}
+.terms-list dt {
+  color: var(--muted);
+}
+.terms-list dd {
+  margin: 0;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.frontier-diagram {
+  margin: 20px 0 0;
+}
+.frontier-strip {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+}
+.frontier-round {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding-block: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.frontier-index {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.frontier-glyph {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+.frontier-round.zero,
+.frontier-round.missing {
+  background: var(--hover);
+  border-color: var(--control-line);
+}
+.frontier-round.unknown {
+  border-style: dashed;
+  color: var(--muted);
+}
+.frontier-scale {
+  display: grid;
+  grid-template-columns: 5fr 3fr;
+  gap: 6px;
+  margin-block-start: 8px;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.frontier-scale span + span {
+  padding-inline-start: 8px;
+  border-inline-start: 2px solid var(--accent);
+}
+.frontier-legend {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  color: var(--muted);
+}
+.frontier-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.frontier-legend .key {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 24px;
+  block-size: 24px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font-weight: 600;
+}
+.frontier-legend .key.zero,
+.frontier-legend .key.missing {
+  background: var(--hover);
+  border-color: var(--control-line);
+}
+.frontier-legend .key.unknown {
+  border-style: dashed;
+  color: var(--muted);
+}
+.steps .frontier-diagram p {
+  font-size: var(--text-sm);
+  margin-block-start: 12px;
+}
+.label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-block: 16px 8px;
+}
+.label-row:first-child {
+  margin-block-start: 0;
+}
+.token-chip {
+  font-size: var(--text-sm);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--hover);
+  overflow-wrap: anywhere;
+}
+.button.failed {
+  color: var(--error);
+  border-color: var(--error);
+  background: var(--error-bg);
+  font-weight: 600;
+}
+.activation-note {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  color: var(--warning);
+  margin-block: 12px 0;
+  max-inline-size: 78ch;
+}
+.activation-note svg {
+  flex: none;
+  margin-block-start: 3px;
+}
+.activation-note a {
+  color: inherit;
+}
 .verification {
   color: var(--muted);
   display: flex;
@@ -1169,6 +1337,16 @@ body:has(dialog[open]) {
   }
 }
 @media (max-width: 48rem) {
+  .how-steps {
+    grid-template-columns: 1fr;
+    row-gap: 40px;
+  }
+  .steps.how-steps li {
+    display: block;
+  }
+  .how-steps .step-number {
+    margin-block-end: 8px;
+  }
   .shell {
     padding-inline: 24px;
   }
@@ -1289,6 +1467,9 @@ body:has(dialog[open]) {
   }
 }
 @media (max-width: 30rem) {
+  .frontier-legend {
+    grid-template-columns: 1fr;
+  }
   .shell {
     padding-inline: 20px;
   }
@@ -1328,7 +1509,7 @@ body:has(dialog[open]) {
     display: none;
   }
   .hero {
-    padding-block: 16px 24px;
+    padding-block: 28px 24px;
     gap: 24px;
   }
   .hero h1 {

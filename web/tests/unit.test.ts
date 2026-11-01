@@ -10,6 +10,9 @@ import {
   DURATIONS,
   THRESHOLDS,
   fullAmount,
+  withDeadline,
+  explainError,
+  DeadlineError,
 } from "../src/domain";
 
 test("token amounts are exact and reject excess precision, exponents, negatives and overflow", () => {
@@ -69,4 +72,20 @@ test("LP minimum is nonzero and protects output with 0.5% tolerance", () => {
   );
   assert.equal(minimumOutput(1000n), 995n);
   assert.throws(() => minimumOutput(1n));
+});
+
+test("withDeadline caps a hung read and passes through fast results", async () => {
+  const started = Date.now();
+  await assert.rejects(
+    withDeadline(new Promise(() => {}), 50, "Reading the quote"),
+    (e: unknown) =>
+      e instanceof DeadlineError &&
+      /Reading the quote took longer than 0 seconds/.test(explainError(e)),
+  );
+  assert.ok(Date.now() - started < 1000);
+  assert.equal(await withDeadline(Promise.resolve(7), 50, "x"), 7);
+  await assert.rejects(
+    withDeadline(Promise.reject(new Error("boom")), 50, "x"),
+    /boom/,
+  );
 });

@@ -13,6 +13,7 @@ import {
   chain,
   explorerAddress,
   publicClient,
+  READ_DEADLINE_MS,
   type ContractName,
 } from "./config";
 import { read, type Policy, type Snapshot } from "./chain";
@@ -27,6 +28,7 @@ import {
   requiredZeros,
   THRESHOLDS,
   validateStart,
+  withDeadline,
 } from "./domain";
 import { PolicyBookAbi } from "./abis";
 import { Icon } from "./Icons";
@@ -119,6 +121,18 @@ function FormError({ children, id }: { children: ReactNode; id: string }) {
     </p>
   ) : null;
 }
+// Errors that come from the user's input refocus the field; read failures do not.
+const isInputError = (message: string) =>
+  /^(Enter a positive|Choose a start|Start at most|The end round)/.test(
+    message,
+  );
+function TokenChip({ id, prefix }: { id: string; prefix?: string }) {
+  return (
+    <span className="token-chip" id={id}>
+      {prefix}mSQK (on-chain symbol SQI)
+    </span>
+  );
+}
 function WalletGate({
   verified,
   children,
@@ -166,7 +180,11 @@ function Allowance({
     queryKey: ["allowance", address, spender],
     enabled: !!address,
     queryFn: () =>
-      read<bigint>("MockSQK", "allowance", [address!, addresses[spender]]),
+      withDeadline(
+        read<bigint>("MockSQK", "allowance", [address!, addresses[spender]]),
+        READ_DEADLINE_MS,
+        "Checking mSQK approval",
+      ),
     retry: false,
     refetchInterval: 15_000,
   });
@@ -240,10 +258,12 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
   const [error, setError] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const key = `${cover}/${rounds}/${threshold}/${start}`;
   const currentKey = useRef(key);
   currentKey.current = key;
   const validQuote = quote?.inputKey === key ? quote : undefined;
+  const failed = !!error && !loading && !isInputError(error);
   const expired =
     validQuote && BigInt(Math.floor(now / 1000)) > validQuote.deadline;
   const lagging =
@@ -262,19 +282,30 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
     const capturedKey = key;
     try {
       const coverValue = amount(cover);
-      const [frontier, current] = await read<
-        readonly [bigint, bigint, boolean]
-      >("CoreReader", "snapshot");
-      const startValue = start.trim()
+      const startInput = start.trim()
         ? integer(start, "Start round", (1n << 64n) - 1n)
-        : automaticStart(frontier, current);
-      validateStart(startValue, frontier, current, rounds);
-      const [premium, end] = await read<readonly [bigint, bigint]>(
-        "PolicyBook",
-        "quote",
-        [startValue, rounds, threshold, coverValue],
+        : undefined;
+      const { startValue, premium, end, block } = await withDeadline(
+        (async () => {
+          const [frontier, current] = await read<
+            readonly [bigint, bigint, boolean]
+          >("CoreReader", "snapshot");
+          const startValue = startInput ?? automaticStart(frontier, current);
+          validateStart(startValue, frontier, current, rounds);
+          const [[premium, end], block] = await Promise.all([
+            read<readonly [bigint, bigint]>("PolicyBook", "quote", [
+              startValue,
+              rounds,
+              threshold,
+              coverValue,
+            ]),
+            publicClient.getBlock(),
+          ]);
+          return { startValue, premium, end, block };
+        })(),
+        READ_DEADLINE_MS,
+        "Reading the quote",
       );
-      const block = await publicClient.getBlock();
       if (currentKey.current === capturedKey)
         setQuote({
           start: startValue,
@@ -288,8 +319,10 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
         });
     } catch (e) {
       if (currentKey.current === capturedKey) {
-        setError(explainError(e));
-        amountRef.current?.focus();
+        const message = explainError(e);
+        setError(message);
+        if (isInputError(message)) amountRef.current?.focus();
+        else requestAnimationFrame(() => submitRef.current?.focus());
       }
     } finally {
       setLoading(false);
@@ -302,7 +335,10 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
         <span className="small muted">mSQK</span>
       </div>
       <form onSubmit={getQuote}>
-        <label htmlFor="cover-amount">Cover amount</label>
+        <div className="label-row">
+          <label htmlFor="cover-amount">Cover amount</label>
+          <TokenChip id="cover-token" />
+        </div>
         <div className="amount-field">
           <input
             ref={amountRef}
@@ -315,7 +351,11 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
             aria-invalid={
               error.startsWith("Enter a positive amount") || undefined
             }
-            aria-describedby={error ? "cover-help cover-error" : "cover-help"}
+            aria-describedby={
+              error
+                ? "cover-token cover-help cover-error"
+                : "cover-token cover-help"
+            }
           />
           <span>mSQK</span>
         </div>
@@ -360,19 +400,28 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
           {requiredZeros(rounds, threshold)} or more zero-work rounds.
         </p>
         <button
+          ref={submitRef}
           className={
-            validQuote && !expired ? "button full" : "button primary full"
+            failed
+              ? "button full failed"
+              : validQuote && !expired
+                ? "button full"
+                : "button primary full"
           }
           disabled={loading || tx.busy}
+          aria-describedby={error ? "cover-error" : undefined}
           type="submit"
         >
           {loading
             ? "Reading quote…"
-            : validQuote
-              ? "Refresh quote"
-              : "Get quote"}
-          <Icon name="arrow" />
+            : failed
+              ? "Retry quote"
+              : validQuote
+                ? "Refresh quote"
+                : "Get quote"}
+          <Icon name={failed ? "alert" : "arrow"} />
         </button>
+        <FormError id="cover-error">{error}</FormError>
         <p className="small muted no-wallet">
           No wallet needed to quote. Testnet tokens only.
         </p>
@@ -396,7 +445,6 @@ function CoverForm({ snapshot, verified, onConnect, tx, now }: Shared) {
           </p>
         </details>
       </form>
-      <FormError id="cover-error">{error}</FormError>
       {validQuote && (
         <div className="action-result" aria-label="COVER quote">
           <h3>Review your quote</h3>
@@ -535,6 +583,7 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
   const [error, setError] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const key = `${mode}/${value}/${address}`;
   const currentKey = useRef(key);
   currentKey.current = key;
@@ -542,10 +591,14 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
     queryKey: ["balances", address],
     enabled: !!address,
     queryFn: async () => {
-      const [tokens, shares] = await Promise.all([
-        read<bigint>("MockSQK", "balanceOf", [address!]),
-        read<bigint>("CoverPool", "sharesOf", [address!]),
-      ]);
+      const [tokens, shares] = await withDeadline(
+        Promise.all([
+          read<bigint>("MockSQK", "balanceOf", [address!]),
+          read<bigint>("CoverPool", "sharesOf", [address!]),
+        ]),
+        READ_DEADLINE_MS,
+        "Reading your balance",
+      );
       return { tokens, shares };
     },
     retry: false,
@@ -565,16 +618,26 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
     try {
       const input =
         mode === "deposit" ? amount(value) : integer(value, "Share units");
-      const [output, epoch, pending, bound] = await Promise.all([
-        read<bigint>(
-          "CoverPool",
-          mode === "deposit" ? "previewDeposit" : "previewRedeem",
-          [input],
-        ),
-        read<bigint>("CoverPool", "shareEpoch"),
-        read<boolean>("PolicyBook", "settlementPending"),
-        read<string>("CoverPool", "policyBook"),
-      ]);
+      const [output, epoch, pending, bound, free, owned] = await withDeadline(
+        Promise.all([
+          read<bigint>(
+            "CoverPool",
+            mode === "deposit" ? "previewDeposit" : "previewRedeem",
+            [input],
+          ),
+          read<bigint>("CoverPool", "shareEpoch"),
+          read<boolean>("PolicyBook", "settlementPending"),
+          read<string>("CoverPool", "policyBook"),
+          mode === "redeem"
+            ? read<bigint>("CoverPool", "freeAssets")
+            : Promise.resolve(undefined),
+          mode === "redeem" && address
+            ? read<bigint>("CoverPool", "sharesOf", [address])
+            : Promise.resolve(undefined),
+        ]),
+        READ_DEADLINE_MS,
+        "Reading the preview",
+      );
       if (bound.toLowerCase() !== addresses.PolicyBook)
         throw new Error(
           "The pool is not activated. The owner must bind PolicyBook before deposits.",
@@ -584,15 +647,11 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
           "Settlement or review is pending. Use the Settle panel before moving LP liquidity.",
         );
       if (mode === "redeem") {
-        const free = await read<bigint>("CoverPool", "freeAssets");
-        if (output > free)
+        if (free !== undefined && output > free)
           throw new Error(
             "This redemption exceeds free liquidity. Reduce the share units or wait for settlement.",
           );
-        if (
-          address &&
-          input > (await read<bigint>("CoverPool", "sharesOf", [address]))
-        )
+        if (owned !== undefined && input > owned)
           throw new Error(
             "This exceeds your current-epoch shares. Refresh your balance or reduce the amount.",
           );
@@ -608,14 +667,17 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
         });
     } catch (e) {
       if (currentKey.current === captured) {
-        setError(explainError(e));
-        inputRef.current?.focus();
+        const message = explainError(e);
+        setError(message);
+        if (isInputError(message)) inputRef.current?.focus();
+        else requestAnimationFrame(() => submitRef.current?.focus());
       }
     } finally {
       setLoading(false);
     }
   }
   const valid = preview?.key === key ? preview : undefined;
+  const failed = !!error && !loading && !isInputError(error);
   const write = async () => {
     if (!valid) return;
     await tx.run(
@@ -694,11 +756,17 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
         </div>
       )}
       <form onSubmit={onPreview}>
-        <label htmlFor="lp-amount">
-          {mode === "deposit"
-            ? "Deposit amount in mSQK"
-            : "Share units to redeem"}
-        </label>
+        <div className="label-row">
+          <label htmlFor="lp-amount">
+            {mode === "deposit"
+              ? "Deposit amount in mSQK"
+              : "Share units to redeem"}
+          </label>
+          <TokenChip
+            id="lp-token"
+            prefix={mode === "deposit" ? undefined : "Pays out "}
+          />
+        </div>
         <input
           ref={inputRef}
           id="lp-amount"
@@ -708,7 +776,9 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           aria-invalid={error.startsWith("Enter a positive") || undefined}
-          aria-describedby={error ? "lp-help lp-error" : "lp-help"}
+          aria-describedby={
+            error ? "lp-token lp-help lp-error" : "lp-token lp-help"
+          }
           placeholder={mode === "deposit" ? "0.00" : "Whole share units"}
         />
         <p className="small muted" id="lp-help">
@@ -717,15 +787,24 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
             : "Pool shares are raw integer units, not mSQK amounts."}
         </p>
         <button
-          className={valid ? "button full" : "button primary full"}
+          ref={submitRef}
+          className={
+            failed
+              ? "button full failed"
+              : valid
+                ? "button full"
+                : "button primary full"
+          }
           disabled={loading || tx.busy}
+          aria-describedby={error ? "lp-error" : undefined}
           type="submit"
         >
           {loading
             ? "Reading preview…"
-            : `Preview ${mode === "deposit" ? "deposit" : "redemption"}`}
-          <Icon name="arrow" />
+            : `${failed ? "Retry" : "Preview"} ${mode === "deposit" ? "deposit" : "redemption"}`}
+          <Icon name={failed ? "alert" : "arrow"} />
         </button>
+        <FormError id="lp-error">{error}</FormError>
       </form>
       {snapshot?.pending && (
         <p className="notice warning">
@@ -733,7 +812,6 @@ function LiquidityForm({ snapshot, verified, onConnect, tx }: Shared) {
           panel.
         </p>
       )}
-      <FormError id="lp-error">{error}</FormError>
       {valid && (
         <div className="action-result">
           <h3>Review {mode === "deposit" ? "deposit" : "redemption"}</h3>
@@ -810,15 +888,20 @@ function SettleForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const currentKey = useRef(policyInput);
   currentKey.current = policyInput;
   const gate = useQuery({
     queryKey: ["gateIds", snapshot?.block.toString()],
     enabled: !!snapshot?.pending && snapshot.decide !== undefined,
     queryFn: () =>
-      read<readonly bigint[]>("PolicyBook", "openPolicyIdsDecidingAt", [
-        snapshot!.decide!,
-      ]),
+      withDeadline(
+        read<readonly bigint[]>("PolicyBook", "openPolicyIdsDecidingAt", [
+          snapshot!.decide!,
+        ]),
+        READ_DEADLINE_MS,
+        "Reading pending policy IDs",
+      ),
     retry: false,
   });
   const visible =
@@ -831,34 +914,47 @@ function SettleForm({
     const captured = policyInput;
     try {
       const id = integer(policyInput);
-      const policy = await read<Policy>("PolicyBook", "getPolicy", [id]);
-      if (!policy.status)
-        throw new Error(
-          "No policy exists with this ID. Check the ID or choose a policy from the live list.",
-        );
-      const next: NonNullable<typeof result> = { id, policy };
-      if (policy.status === 1) {
-        try {
-          [next.zeros, next.certified] = await read<readonly [number, number]>(
-            "CoreReader",
-            "certifiedZeroRounds",
-            [policy.startRound, policy.rounds],
-          );
-        } catch (e) {
-          next.warning = explainError(e);
-        }
-      }
+      const next = await withDeadline(
+        (async () => {
+          const policy = await read<Policy>("PolicyBook", "getPolicy", [id]);
+          if (!policy.status)
+            throw new Error(
+              "No policy exists with this ID. Check the ID or choose a policy from the live list.",
+            );
+          const next: NonNullable<typeof result> = { id, policy };
+          if (policy.status === 1) {
+            try {
+              [next.zeros, next.certified] = await read<
+                readonly [number, number]
+              >("CoreReader", "certifiedZeroRounds", [
+                policy.startRound,
+                policy.rounds,
+              ]);
+            } catch (e) {
+              next.warning = explainError(e);
+            }
+          }
+          return next;
+        })(),
+        READ_DEADLINE_MS,
+        "Reading the policy",
+      );
       if (currentKey.current === captured) setResult(next);
     } catch (e) {
       if (currentKey.current === captured) {
-        setError(explainError(e));
-        inputRef.current?.focus();
+        const message = explainError(e);
+        setError(message);
+        if (/^(Enter a positive|No policy exists)/.test(message))
+          inputRef.current?.focus();
+        else requestAnimationFrame(() => submitRef.current?.focus());
       }
     } finally {
       setLoading(false);
     }
   }
   const settled = visible && visible.policy.status !== 1;
+  const failed =
+    !!error && !loading && !/^(Enter a positive|No policy exists)/.test(error);
   const canSettle =
     visible &&
     visible.zeros !== undefined &&
@@ -907,13 +1003,26 @@ function SettleForm({
           placeholder="Enter an on-chain policy ID"
         />
         <button
+          ref={submitRef}
           type="submit"
-          className={visible ? "button full" : "button primary full"}
+          className={
+            failed
+              ? "button full failed"
+              : visible
+                ? "button full"
+                : "button primary full"
+          }
           disabled={loading || tx.busy}
+          aria-describedby={error ? "policy-error" : undefined}
         >
-          {loading ? "Reading policy…" : "Look up policy"}
-          <Icon name="arrow" />
+          {loading
+            ? "Reading policy…"
+            : failed
+              ? "Retry lookup"
+              : "Look up policy"}
+          <Icon name={failed ? "alert" : "arrow"} />
         </button>
+        <FormError id="policy-error">{error}</FormError>
       </form>
       {snapshot?.pending && (
         <div className="small notice warning">
@@ -940,7 +1049,6 @@ function SettleForm({
           )}
         </div>
       )}
-      <FormError id="policy-error">{error}</FormError>
       {visible && (
         <div className="action-result">
           <div className="panel-heading">

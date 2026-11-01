@@ -112,7 +112,31 @@ const errors: Record<string, string> = {
   ShareSupplyExhausted:
     "The pool cannot issue more shares at this supply. See the recapitalization limits in THREATS.md.",
 };
+export class DeadlineError extends Error {
+  constructor(what: string, ms: number) {
+    super(
+      `${what} took longer than ${Math.round(ms / 1000)} seconds on every Sepolia RPC. Check your connection, then retry. Nothing was sent.`,
+    );
+    this.name = "DeadlineError";
+  }
+}
+// Caps a read so no spinner outlives `ms`. The underlying request may still settle
+// later; callers ignore it because the promise has already rejected.
+export function withDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+  what: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    work,
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new DeadlineError(what, ms)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 export function explainError(error: unknown): string {
+  if (error instanceof DeadlineError) return error.message;
   if (error instanceof BaseError) {
     const reverted = error.walk(
       (e) => e instanceof ContractFunctionRevertedError,
