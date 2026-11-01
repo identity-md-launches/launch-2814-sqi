@@ -62,17 +62,17 @@ The two share-supply defects reported in the previous round (a deposit overflowi
 implementation (`MAX_TOTAL_SHARES`, share epochs) and are covered by its `ShareSupply.t.sol`; the
 invariant still asserts the bounded share denominator.
 
-This revision reports two new items in the repository-root `.imd-findings.json`:
+The previous round's medium finding (the gate stayed closed when only `roundPage` failed) is fixed:
+`settlementPending()` now also reads the pending policy's history and fails open when it cannot, which
+`EarlyDecisionProperties.t.sol:test_reviewFailsClosedOnUnreadableHistory` checks. The low dust-policy
+item is now documented in `THREATS.md` as an accepted liveness cost.
 
-1. **Medium (with proof):** `settlementPending()` probes only `snapshot()`. When Core `roundPage`
-   fails or is rejected for a certified window, `settle` cannot run but the gate stays closed, so
-   every deposit and free-liquidity redemption reverts `SettlementPending` indefinitely. The
-   documentation says the gate fails open when the core cannot be read.
-2. **Low:** one-atom cover is accepted for a one-atom premium; each such policy must be settled
-   before LPs can move once its window is certified (`test_dustPoliciesMustEachBeSettledBeforeLpsCanMove`).
+This revision reports one item in `.imd-findings.json`:
 
-To reproduce the medium finding, extract its `proof` verbatim to a temporary
-`test/scratch/*.t.sol` file and run `forge test --match-path` on it; it fails on the current code.
+1. **Info:** `settle` and `review` now settle before `frontier >= endRound` once the certified prefix
+   fixes the outcome. The brief says "Anyone settle when frontier>=end". The tests show the early
+   result always matches what settling at the end would give, so no value is at risk. The requester
+   should still confirm they accept this design change.
 
 ## Revision for the settlement gate, lead cap and batch-limit changes
 
@@ -97,3 +97,25 @@ for this assignment. Existing recorded-ABI tests remain offline compatibility ch
 Root deployment documentation and manifest belong to the accepted implementation and were
 not changed by this tests-only assignment. This suite does not approve a launch with the
 reported defects unresolved.
+
+## Revision for early settlement, review and the decide-round gate
+
+- `EarlyDecisionProperties.t.sol` (new, 1,000 fuzz runs): for every product, random history and any
+  certified prefix length, `settle` and `review` decide exactly when the best and worst completions of
+  the window agree (checked against the brief's `zeros * 10000 >= N * T` rule, not the implementation's
+  ceiling). The decision always equals that agreed outcome. Otherwise they revert `Undecided` with the
+  prefix counts, or move the decide round to exactly the first round that could pay, and no value moves.
+  Also covered: the opening decide round and the gate one round before it, the pinned required-zero
+  table, a review chain over active 144-round history ending in early expiry, a no-op review, review
+  of missing ids, review on unreadable history, and an early-fixed expiry that leaves the gate open
+  without changing the share price.
+- `SolvencyInvariant.t.sol`: the handler's settlement oracle is now an independent model of the
+  certified prefix. It adds a `review` action, and every call checks that `settlementPending` equals
+  "some open decide round is certified", that `earliestDecideRound` is the naive minimum, that decide
+  rounds stay inside the window, and (soundness) that no open policy whose payout history has already
+  fixed sits past the frontier. `test_handlerReviewsThenSettlesEarly` pins the review and early-payout
+  paths so the campaign cannot pass vacuously.
+- `PolicyFailureMatrix.t.sol` and `SettlementGateAdversarial.t.sol`: the frontier-one-short and
+  later-window tests now assert the new rules (undecided versus early expiry; the gate keyed on decide
+  rounds and reopened by review) instead of the old end-round-only rule.
+

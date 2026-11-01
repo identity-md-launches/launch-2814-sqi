@@ -52,23 +52,40 @@ contract SettlementGateAdversarialTest is CoverFixture {
         assertGt(pool.redeem(slice, 1), 0);
     }
 
-    /// The gate follows the earliest open end only: a later uncertified window never blocks LPs.
-    function test_gateIgnoresUncertifiedLaterWindowsAndReopensAfterEarliestSettles() public {
+    /// The gate follows the earliest decide round: it closes when a payout could first be fixed, a review
+    /// reopens it while the policy is still undecided, and a later window never blocks LPs early.
+    function test_gateIgnoresUndecidableLaterWindowsAndReopensAfterReview() public {
         (uint256 shortId,) = _open(alice, 6, 5000, 10 ether);
         (uint256 longId,) = _open(alice, 144, 5000, 10 ether);
         assertEq(book.earliestOpenEnd(), START + 5);
-        _certify(START + 4);
-        assertFalse(book.settlementPending(), "frontier one short of the earliest end");
-        _certify(START + 5);
-        assertTrue(book.settlementPending());
+        // 6 x 50% needs 3 zero rounds: the earliest certification that could pay is START + 2.
+        assertEq(book.earliestDecideRound(), START + 2);
+        assertEq(book.getPolicy(longId).decideRound, START + 71);
+        core.record(START, 1);
+        _certify(START + 1);
+        assertFalse(book.settlementPending(), "frontier one short of the earliest decide round");
+        _certify(START + 2);
+        assertTrue(book.settlementPending(), "two zero rounds certified: not paid yet but must be reviewed");
         _lpRedeemReverts(CoverPool.SettlementPending.selector);
-        vm.expectRevert();
-        book.settle(longId);
-        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(PolicyBook.Undecided.selector, shortId, 2, 3));
         book.settle(shortId);
-        assertEq(book.earliestOpenEnd(), START + 143);
+        vm.prank(bob);
+        (bool settled, uint64 next) = book.review(shortId);
+        assertFalse(settled);
+        assertEq(next, START + 3);
         assertFalse(book.settlementPending());
         uint256 slice = pool.sharesOf(lp) / 100;
+        vm.prank(lp);
+        assertGt(pool.redeem(slice, 1), 0);
+        _certify(START + 3);
+        assertTrue(book.settlementPending(), "the third zero round fixes the payout before the end");
+        vm.expectRevert(abi.encodeWithSelector(PolicyBook.Undecided.selector, longId, 3, 4));
+        book.settle(longId);
+        vm.prank(bob);
+        assertEq(book.settle(shortId), 10 ether);
+        assertEq(book.earliestOpenEnd(), START + 143);
+        assertEq(book.earliestDecideRound(), START + 71);
+        assertFalse(book.settlementPending());
         vm.prank(lp);
         assertGt(pool.redeem(slice, 1), 0);
         assertEq(uint8(book.getPolicy(longId).status), uint8(PolicyBook.Status.Open));

@@ -154,21 +154,47 @@ contract PolicyFailureMatrixTest is CoverFixture {
         assertEq(pool.reserved(), 0);
     }
 
-    function test_frontierOneShortRejectsEvenFullyAvailableActiveRecords() public {
+    /// Frontier one short of the end: the uncertified last round can still flip a 2-of-6 prefix to a
+    /// payout, so neither settle nor review may decide it, and neither touches custody.
+    function test_frontierOneShortStaysUndecidedWhileTheLastRoundCanStillTrigger() public {
         (uint256 id,) = _open(alice, 6, 5000, 100 ether);
-        for (uint64 i; i < 6; ++i) {
+        for (uint64 i; i < 3; ++i) {
             core.record(START + i, 1);
         }
         _certify(START + 4);
         bytes32 beforeState = _settlementState(id);
-        // Unknown history must be rejected before roundPage is even consulted.
-        vm.mockCallRevert(address(core), abi.encodeWithSelector(core.roundPage.selector), "must not read");
-        vm.expectRevert(abi.encodeWithSelector(CoreReader.UnknownRounds.selector, START + 5, START + 4));
+        vm.expectRevert(abi.encodeWithSelector(PolicyBook.Undecided.selector, id, 2, 5));
         book.settle(id);
         assertEq(_settlementState(id), beforeState);
-        vm.clearMockedCalls();
+        (bool settled, uint64 decideRound) = book.review(id);
+        assertFalse(settled);
+        assertEq(decideRound, START + 5, "only the last round can still trigger");
+        assertEq(pool.reserved(), 100 ether);
+        // The countZeroRounds view keeps its full-window rule.
+        vm.expectRevert(abi.encodeWithSelector(CoreReader.UnknownRounds.selector, START + 5, START + 4));
+        reader.countZeroRounds(START, 6);
         _certify(START + 5);
+        assertEq(book.settle(id), 100 ether, "round START+5 is missing: 3 of 6 is exactly 50%");
+    }
+
+    /// Frontier one short with every certified round active: the prefix already makes 50% unreachable,
+    /// so the reserve is released early, and only certified rounds were ever read.
+    function test_frontierOneShortExpiresWhenThePrefixMakesTheThresholdUnreachable() public {
+        (uint256 id,) = _open(alice, 6, 5000, 100 ether);
+        for (uint64 i; i < 5; ++i) {
+            core.record(START + i, 1);
+        }
+        _certify(START + 4);
+        // Any read of the uncertified round would hit the fixture's bounds check and surface as
+        // CoreUnavailable; asserting success proves the reader stayed inside the frontier.
         assertEq(book.settle(id), 0);
+        PolicyBook.Policy memory p = book.getPolicy(id);
+        assertEq(uint8(p.status), uint8(PolicyBook.Status.Expired));
+        assertEq(p.zeroRounds, 0);
+        assertEq(pool.reserved(), 0);
+        _certify(START + 5);
+        vm.expectRevert(PolicyBook.PolicyNotOpen.selector);
+        book.settle(id);
     }
 
     function test_expiredPolicyCannotBeReplayedAfterFurtherCertification() public {
