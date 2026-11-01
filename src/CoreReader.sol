@@ -37,7 +37,31 @@ contract CoreReader {
         uint64 end = CoverTerms.endRound(startRound, rounds);
         (uint64 frontier,,, uint256 pageSize) = _snapshot();
         if (end > frontier) revert UnknownRounds(end, frontier);
+        return _countZeroRounds(startRound, end, pageSize);
+    }
 
+    /// @notice Zero-work rounds in the certified prefix of a window: rounds `startRound` through
+    /// `min(endRound, frontier)`. Returns (0, 0) while nothing of the window is certified.
+    /// @dev Same page validation and failure behavior as `countZeroRounds`; never guesses past the frontier.
+    function certifiedZeroRounds(uint64 startRound, uint16 rounds)
+        external
+        view
+        returns (uint16 zeroRounds, uint16 certifiedRounds)
+    {
+        uint64 end = CoverTerms.endRound(startRound, rounds);
+        (uint64 frontier,,, uint256 pageSize) = _snapshot();
+        if (frontier < startRound) return (0, 0);
+        uint64 through = frontier < end ? frontier : end;
+        certifiedRounds = uint16(through - startRound + 1);
+        zeroRounds = _countZeroRounds(startRound, through, pageSize);
+    }
+
+    /// @dev Zero-work rounds in `startRound..end`, every one of which the caller has checked is certified.
+    function _countZeroRounds(uint64 startRound, uint64 end, uint256 pageSize)
+        private
+        view
+        returns (uint16 zeroRounds)
+    {
         uint64 cursor = startRound - 1;
         uint256 active = 0;
         bool first = true;
@@ -62,8 +86,8 @@ contract CoreReader {
             previousEnd = page.end;
             first = false;
         }
-        // Strictly increasing record IDs in the certified range imply active <= rounds.
-        zeroRounds = uint16(uint256(rounds) - active);
+        // Strictly increasing record IDs in the certified range imply active <= rounds in range.
+        zeroRounds = uint16(uint256(end - startRound + 1) - active);
     }
 
     /// @dev Version and round duration are deliberate fail-closed pins. The batch limit only has to be

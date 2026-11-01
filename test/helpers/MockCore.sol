@@ -10,6 +10,7 @@ contract MockCore is ISqueekCore {
     bool public paused;
     uint64 public version = 3;
     bool public unavailable;
+    bool public historyUnavailable;
     uint16 public batchLimit = 16;
     RoundCheckpoint[] private _records;
 
@@ -35,6 +36,11 @@ contract MockCore is ISqueekCore {
 
     function setUnavailable(bool value) external {
         unavailable = value;
+    }
+
+    /// @dev Metadata keeps reading while only `roundPage` fails, as during a history endpoint outage.
+    function setHistoryUnavailable(bool value) external {
+        historyUnavailable = value;
     }
 
     function record(uint64 roundId, uint64 work) external {
@@ -86,7 +92,7 @@ contract MockCore is ISqueekCore {
         view
         returns (RoundPage memory result)
     {
-        require(!unavailable, "fixture: unavailable");
+        require(!unavailable && !historyUnavailable, "fixture: unavailable");
         require(
             afterRound <= throughRound && throughRound <= frontier && maxRecords <= batchLimit,
             "fixture: bounds"

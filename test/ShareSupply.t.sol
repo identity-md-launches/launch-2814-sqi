@@ -4,8 +4,8 @@ pragma solidity 0.8.26;
 import {CoverFixture} from "./helpers/CoverFixture.sol";
 import {CoverPool} from "../src/CoverPool.sol";
 
-/// @notice Share-supply bounds after repeated complete losses: the supply can never overflow, worthless
-/// shares are retired only when accounted assets are zero, and every solvent holder keeps redeeming.
+/// @notice Share-supply bounds after repeated complete losses: the supply can never overflow, shares are
+/// retired only when accounted assets are at most dust, and every holder of real value keeps redeeming.
 contract ShareSupplyTest is CoverFixture {
     /// @dev LP buys cover on the entire pool, withdraws the premium, and the window certifies empty.
     /// Ends with totalAssets == 0 and reserved == 0 while every share minted so far stays outstanding.
@@ -63,7 +63,7 @@ contract ShareSupplyTest is CoverFixture {
         vm.startPrank(bob);
         token.approve(address(pool), 1 ether);
         vm.expectEmit(address(pool));
-        emit CoverPool.SharesRetired(0, supplyBefore);
+        emit CoverPool.SharesRetired(0, supplyBefore, 0);
         uint256 minted = pool.deposit(1 ether, expected);
         vm.stopPrank();
         assertEq(minted, expected);
@@ -80,16 +80,17 @@ contract ShareSupplyTest is CoverFixture {
         _assertSolvent();
     }
 
-    function test_sharesWithValueAreNeverRetiredAndOverflowingDepositsRevertCleanly() public {
+    function test_sharesWorthMoreThanDustAreNeverRetiredAndOverflowingDepositsRevertCleanly() public {
         for (uint256 i; i < 3; ++i) {
             _completeLossCycle();
             if (i < 2) _recapitalize(1000 ether);
         }
-        // One atom of value: the supply still represents it, so nothing is retired...
-        _recapitalize(1);
+        // Just above the dust bound: the supply still represents it, so nothing is retired...
+        uint256 residual = pool.RETIRE_DUST() + 1;
+        _recapitalize(residual);
         assertEq(pool.shareEpoch(), 0);
-        assertEq(pool.totalAssets(), 1);
-        // ...and a deposit the supply cannot represent is refused rather than expropriating that atom.
+        assertEq(pool.totalAssets(), residual);
+        // ...and a deposit the supply cannot represent is refused rather than expropriating that value.
         vm.expectRevert(CoverPool.ShareSupplyExhausted.selector);
         pool.previewDeposit(1 ether);
         vm.startPrank(bob);
@@ -97,18 +98,87 @@ contract ShareSupplyTest is CoverFixture {
         vm.expectRevert(CoverPool.ShareSupplyExhausted.selector);
         pool.deposit(1 ether, 1);
         vm.stopPrank();
-        // Redeeming the residual value keeps working and clears the way for retirement.
+        // Redeeming keeps working; once the holders have taken the value down to dust, retirement is allowed.
         uint256 keep = pool.totalShares() / 2 - pool.VIRTUAL_SHARES();
         uint256 burn = pool.sharesOf(lp) - keep;
         vm.prank(lp);
-        assertEq(pool.redeem(burn, 1), 1);
-        assertEq(pool.totalAssets(), 0);
+        uint256 taken = pool.redeem(burn, 1);
+        assertApproxEqAbs(taken, residual / 2, 1);
+        uint256 leftover = pool.totalAssets();
+        assertEq(leftover, residual - taken);
+        assertLe(leftover, pool.RETIRE_DUST());
         assertEq(pool.totalShares(), keep);
         vm.startPrank(bob);
         pool.deposit(1 ether, 1);
         vm.stopPrank();
         assertEq(pool.shareEpoch(), 1);
-        assertEq(pool.previewRedeem(pool.sharesOf(bob)), 1 ether);
+        assertEq(pool.totalAssets(), 1 ether + leftover);
+        // The depositor is whole up to rounding; the carried dust backs the virtual shares.
+        assertGe(pool.previewRedeem(pool.sharesOf(bob)), 1 ether - 1);
+        assertLe(pool.previewRedeem(pool.sharesOf(bob)), 1 ether + leftover);
+    }
+
+    /// @dev One atom placed by anyone (or left by redeem rounding) behind an exhausted supply must not
+    /// strand the pool: it is dust, so the next real deposit retires the supply and carries the atom along.
+    function test_residualDustBehindExhaustedSupplyIsCarriedIntoTheNewEpoch() public {
+        for (uint256 i; i < 3; ++i) {
+            _completeLossCycle();
+            if (i < 2) _recapitalize(1000 ether);
+        }
+        uint256 supplyBefore = pool.totalShares();
+        vm.startPrank(bob);
+        token.approve(address(pool), 1);
+        uint256 bobShares = pool.deposit(1, 1);
+        vm.stopPrank();
+        assertGt(bobShares, supplyBefore);
+        assertEq(pool.totalAssets(), 1);
+        assertEq(pool.shareEpoch(), 0);
+        // The honest LP's old shares are worth nothing and cannot clear the atom.
+        assertEq(pool.previewRedeem(pool.sharesOf(lp)), 0);
+
+        uint256 expected = pool.previewDeposit(1 ether);
+        assertEq(expected, 1 ether * pool.VIRTUAL_SHARES() / 2);
+        vm.startPrank(alice);
+        token.approve(address(pool), 1 ether);
+        vm.expectEmit(address(pool));
+        emit CoverPool.SharesRetired(0, supplyBefore + bobShares, 1);
+        uint256 minted = pool.deposit(1 ether, expected);
+        vm.stopPrank();
+        assertEq(minted, expected);
+        assertEq(pool.shareEpoch(), 1);
+        assertEq(pool.totalAssets(), 1 ether + 1);
+        assertEq(pool.sharesOf(bob), 0);
+        assertEq(pool.sharesOf(lp), 0);
+        assertEq(pool.sharesOfEpoch(0, bob), bobShares);
+        // The recapitalizing depositor is whole up to rounding and the atom stays in the pool.
+        assertApproxEqAbs(pool.previewRedeem(minted), 1 ether + 1, 1);
+        vm.prank(alice);
+        assertGe(pool.redeem(minted, 1 ether), 1 ether);
+        _assertSolvent();
+    }
+
+    /// @dev Retirement can only ever cost holders dust: anything above RETIRE_DUST stays unretired.
+    function testFuzz_retirementNeverTakesMoreThanDust(uint96 residualSeed) public {
+        for (uint256 i; i < 3; ++i) {
+            _completeLossCycle();
+            if (i < 2) _recapitalize(1000 ether);
+        }
+        uint256 residual = bound(residualSeed, 1, 10 * pool.RETIRE_DUST());
+        _recapitalize(residual);
+        vm.startPrank(bob);
+        token.approve(address(pool), 1 ether);
+        (bool ok,) = address(pool).call(abi.encodeCall(pool.deposit, (1 ether, 1)));
+        vm.stopPrank();
+        if (residual > pool.RETIRE_DUST()) {
+            assertFalse(ok);
+            assertEq(pool.shareEpoch(), 0);
+            assertEq(pool.previewRedeem(pool.sharesOf(lp)), residual);
+        } else {
+            assertTrue(ok);
+            assertEq(pool.shareEpoch(), 1);
+            assertEq(pool.totalAssets(), 1 ether + residual);
+        }
+        _assertSolvent();
     }
 
     function test_supplyCapRejectsTheDepositThatWouldBreakPreviewsAndVictimStaysLiquid() public {

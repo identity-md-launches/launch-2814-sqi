@@ -31,4 +31,33 @@ library CoverTerms {
     function triggered(uint16 zeroRounds, uint16 rounds, uint16 thresholdBps) internal pure returns (bool) {
         return uint256(zeroRounds) * BPS >= uint256(rounds) * thresholdBps;
     }
+
+    /// @dev Smallest number of zero-work rounds that triggers: ceil(rounds * thresholdBps / BPS), in 1..rounds.
+    function requiredZeroRounds(uint16 rounds, uint16 thresholdBps) internal pure returns (uint16) {
+        return uint16((uint256(rounds) * thresholdBps + BPS - 1) / BPS);
+    }
+
+    /// @dev Outcome fixed by a certified prefix of `certifiedRounds` rounds holding `zeroRounds` zero-work
+    /// rounds. Covered once the prefix alone meets the threshold; expired once the uncertified remainder
+    /// cannot reach it. Undecided otherwise. A fully certified window is always decided.
+    function outcome(uint16 zeroRounds, uint16 certifiedRounds, uint16 rounds, uint16 thresholdBps)
+        internal
+        pure
+        returns (bool decided, bool covered)
+    {
+        uint16 required = requiredZeroRounds(rounds, thresholdBps);
+        if (zeroRounds >= required) return (true, true);
+        if (uint256(zeroRounds) + (rounds - certifiedRounds) < required) return (true, false);
+        return (false, false);
+    }
+
+    /// @dev Earliest round at which `required` zero-work rounds can have been certified given the prefix
+    /// through `lastCertified` (startRound - 1 when nothing is certified yet) holding `zeroRounds`.
+    function nextDecideRound(uint64 lastCertified, uint16 zeroRounds, uint16 required)
+        internal
+        pure
+        returns (uint64)
+    {
+        return lastCertified + (required - zeroRounds);
+    }
 }

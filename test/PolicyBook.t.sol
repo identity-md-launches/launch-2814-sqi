@@ -72,14 +72,59 @@ contract PolicyBookTest is CoverFixture {
 
     function test_unknownRoundsNeverSettleEvenYearsLater() public {
         (uint256 id,) = _open(alice, 6, 3000, 100 ether);
+        // Four active rounds, one certified zero round: the last, unknown round decides the outcome.
+        for (uint64 r = START; r < START + 4; ++r) {
+            core.record(r, 1);
+        }
         core.setFrontier(START + 4);
         vm.warp(block.timestamp + 3650 days);
-        vm.expectRevert(abi.encodeWithSelector(CoreReader.UnknownRounds.selector, START + 5, START + 4));
+        vm.expectRevert(abi.encodeWithSelector(PolicyBook.Undecided.selector, id, 1, 5));
         book.settle(id);
         assertEq(pool.reserved(), 100 ether);
         assertEq(uint8(book.getPolicy(id).status), uint8(PolicyBook.Status.Open));
+        // The reader itself still refuses to count a window that is not fully certified.
+        vm.expectRevert(abi.encodeWithSelector(CoreReader.UnknownRounds.selector, START + 5, START + 4));
+        reader.countZeroRounds(START, 6);
         core.setFrontier(START + 5);
         assertEq(book.settle(id), 100 ether);
+        assertEq(book.getPolicy(id).zeroRounds, 2);
+    }
+
+    function test_earlySettlementPaysOnlyWhenCertifiedZeroRoundsAlreadyMeetTheThreshold() public {
+        (uint256 id,) = _open(alice, 6, 5000, 100 ether);
+        PolicyBook.Policy memory p = book.getPolicy(id);
+        assertEq(p.decideRound, START + 2);
+        core.record(START, 1);
+        _certify(START + 2);
+        // Two zero rounds of three needed: undecided, and nothing is paid or released.
+        vm.expectRevert(abi.encodeWithSelector(PolicyBook.Undecided.selector, id, 2, 3));
+        book.settle(id);
+        _certify(START + 3);
+        uint256 before = token.balanceOf(alice);
+        vm.prank(bob);
+        assertEq(book.settle(id), 100 ether);
+        assertEq(token.balanceOf(alice), before + 100 ether);
+        p = book.getPolicy(id);
+        assertEq(uint8(p.status), uint8(PolicyBook.Status.Paid));
+        assertEq(p.zeroRounds, 3);
+        assertEq(pool.reserved(), 0);
+        _assertSolvent();
+    }
+
+    function test_earlyExpiryReleasesReserveOnceTheThresholdIsUnreachable() public {
+        (uint256 id, uint256 premium) = _open(alice, 6, 7000, 100 ether);
+        core.record(START, 1);
+        core.record(START + 1, 1);
+        _certify(START + 1);
+        // Needs five zero rounds; four remain at most.
+        assertEq(book.settle(id), 0);
+        PolicyBook.Policy memory p = book.getPolicy(id);
+        assertEq(uint8(p.status), uint8(PolicyBook.Status.Expired));
+        assertEq(p.zeroRounds, 0);
+        assertEq(pool.reserved(), 0);
+        assertEq(pool.totalAssets(), 1000 ether + premium);
+        vm.expectRevert(PolicyBook.PolicyNotOpen.selector);
+        book.settle(id);
     }
 
     function test_settlesAtFrontierEqualEnd() public {

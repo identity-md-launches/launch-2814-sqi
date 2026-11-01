@@ -49,20 +49,115 @@ contract SettlementGateTest is CoverFixture {
         _assertSolvent();
     }
 
-    function test_gateOpensOnlyWhenTheWholeWindowIsCertified() public {
-        (uint256 id,) = _open(alice, 6, 3000, 500 ether);
-        _certify(START + 4);
+    /// @dev A six-round 30% policy is certainly paid after two certified zero rounds. The gate closes right
+    /// there, before the window is fully certified, and early settlement reopens it.
+    function test_gateClosesAsSoonAsCertifiedHistoryFixesThePayout() public {
+        _deposit(bob, 1000 ether);
+        uint256 bobShares = pool.sharesOf(bob);
+        (uint256 id, uint256 premium) = _open(alice, 6, 3000, 1000 ether);
+        assertEq(book.earliestDecideRound(), START + 1);
+        _certify(START);
         assertFalse(book.settlementPending());
-        vm.prank(lp);
-        pool.redeem(1e9, 1);
-        _certify(START + 5);
+        _certify(START + 1);
+        assertTrue(book.settlementPending());
+        vm.prank(bob);
+        vm.expectRevert(CoverPool.SettlementPending.selector);
+        pool.redeem(bobShares, 1);
+        uint256[] memory pending = book.openPolicyIdsDecidingAt(START + 1);
+        assertEq(pending.length, 1);
+        assertEq(pending[0], id);
+        assertEq(book.settle(id), 1000 ether);
+        assertFalse(book.settlementPending());
+        assertEq(book.earliestDecideRound(), 0);
+        // Both LPs funded the cover equally and both carry half of it.
+        uint256 expected = (1000 ether + premium) / 2;
+        vm.prank(bob);
+        assertApproxEqAbs(pool.redeem(bobShares, 1), expected, 1);
+        assertApproxEqAbs(pool.previewRedeem(pool.sharesOf(lp)), expected, 1);
+        _assertSolvent();
+    }
+
+    /// @dev An undecided policy at its decide round closes the gate until someone reviews it; the review
+    /// moves the decide round to the earliest round at which the threshold could still be met.
+    function test_reviewReopensTheGateForAnUndecidedPolicy() public {
+        (uint256 id,) = _open(alice, 6, 5000, 500 ether); // needs three zero rounds; decide round START + 2
+        core.record(START, 1);
+        _certify(START + 2);
         assertTrue(book.settlementPending());
         vm.prank(lp);
         vm.expectRevert(CoverPool.SettlementPending.selector);
         pool.redeem(1e9, 1);
-        assertEq(book.settle(id), 500 ether);
+        vm.expectRevert(abi.encodeWithSelector(PolicyBook.Undecided.selector, id, 2, 3));
+        book.settle(id);
+
+        vm.expectEmit(address(book));
+        emit PolicyBook.PolicyReviewed(id, 2, 3, START + 3);
+        (bool settled, uint64 decideRound) = book.review(id);
+        assertFalse(settled);
+        assertEq(decideRound, START + 3);
+        assertEq(book.getPolicy(id).decideRound, START + 3);
+        assertEq(book.earliestDecideRound(), START + 3);
+        assertEq(book.openPolicyIdsDecidingAt(START + 2).length, 0);
+        assertEq(book.openPolicyIdsDecidingAt(START + 3)[0], id);
+        assertFalse(book.settlementPending());
         vm.prank(lp);
         pool.redeem(1e9, 1);
+
+        // Another active round pushes the bound again; a review that finds the outcome fixed settles.
+        core.record(START + 3, 1);
+        _certify(START + 3);
+        assertTrue(book.settlementPending());
+        (settled, decideRound) = book.review(id);
+        assertFalse(settled);
+        assertEq(decideRound, START + 4);
+        _certify(START + 5);
+        (settled,) = book.review(id);
+        assertTrue(settled);
+        assertEq(uint8(book.getPolicy(id).status), uint8(PolicyBook.Status.Paid));
+        assertEq(book.getPolicy(id).zeroRounds, 4);
+        assertFalse(book.settlementPending());
+        assertEq(book.openPolicyCount(), 0);
+    }
+
+    /// @dev A later-opened policy can be decided while an earlier one at a smaller decide round is not. The
+    /// gate stays closed through the review of the first until the decided one is settled.
+    function test_gateHoldsWhileAnyDecidedPolicyIsOpen() public {
+        (uint256 first,) = _open(alice, 12, 3000, 100 ether); // needs four zero rounds; decide round START + 3
+        (uint256 premium,) = book.quote(START + 4, 6, 3000, 100 ether);
+        vm.startPrank(bob);
+        token.approve(address(book), premium);
+        uint256 second = book.openPolicy(START + 4, 6, 3000, 100 ether, premium, block.timestamp); // decides START + 5
+        vm.stopPrank();
+        assertEq(book.earliestDecideRound(), START + 3);
+        for (uint64 r = START; r < START + 4; ++r) {
+            core.record(r, 1);
+        }
+        _certify(START + 5);
+        // First: two zero rounds of four, six rounds unknown; undecided. Second: two zero rounds; paid for certain.
+        assertTrue(book.settlementPending());
+        (bool settled, uint64 decideRound) = book.review(first);
+        assertFalse(settled);
+        assertEq(decideRound, START + 7);
+        assertTrue(book.settlementPending());
+        assertEq(book.earliestDecideRound(), START + 5);
+        vm.prank(lp);
+        vm.expectRevert(CoverPool.SettlementPending.selector);
+        pool.redeem(1e9, 1);
+        assertEq(book.settle(second), 100 ether);
+        assertFalse(book.settlementPending());
+        vm.prank(lp);
+        pool.redeem(1e9, 1);
+        // Five more active rounds leave the first only one unknown round: it can no longer pay.
+        for (uint64 r = START + 6; r <= START + 10; ++r) {
+            core.record(r, 1);
+        }
+        _certify(START + 10);
+        assertTrue(book.settlementPending());
+        assertEq(book.settle(first), 0);
+        assertEq(uint8(book.getPolicy(first).status), uint8(PolicyBook.Status.Expired));
+        assertEq(book.getPolicy(first).zeroRounds, 2);
+        assertFalse(book.settlementPending());
+        assertEq(pool.reserved(), 0);
     }
 
     function test_gateFailsOpenWhenTheCoreCannotBeRead() public {
@@ -80,6 +175,33 @@ contract SettlementGateTest is CoverFixture {
         book.settle(1);
         vm.prank(lp);
         pool.redeem(1e6, 1);
+    }
+
+    /// @dev Metadata reads keep working while only the history endpoint fails: nothing can settle or be
+    /// reviewed, so the gate must not freeze free liquidity.
+    function test_gateFailsOpenWhenOnlyHistoryCannotBeRead() public {
+        (uint256 id,) = _open(alice, 6, 5000, 100 ether);
+        _certify(START + 5);
+        assertTrue(book.settlementPending());
+        core.setHistoryUnavailable(true);
+        vm.expectRevert(CoreReader.CoreUnavailable.selector);
+        book.settle(id);
+        vm.expectRevert(CoreReader.CoreUnavailable.selector);
+        book.review(id);
+        assertFalse(book.settlementPending());
+        uint256 tenth = pool.sharesOf(lp) / 10;
+        vm.startPrank(lp);
+        assertGe(pool.redeem(tenth, 1), 100 ether);
+        token.approve(address(pool), 1 ether);
+        pool.deposit(1 ether, 1);
+        vm.stopPrank();
+        assertEq(pool.reserved(), 100 ether);
+        // Once history is back the gate closes again until the policy is settled.
+        core.setHistoryUnavailable(false);
+        assertTrue(book.settlementPending());
+        assertEq(book.settle(id), 100 ether);
+        assertFalse(book.settlementPending());
+        _assertSolvent();
     }
 
     function test_earliestOpenEndTracksSettlementInAnyOrder() public {

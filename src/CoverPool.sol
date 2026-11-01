@@ -23,6 +23,10 @@ contract CoverPool is Managed, ReentrancyGuard {
     uint256 public constant VIRTUAL_SHARES = 1_000_000;
     /// @dev `totalShares + VIRTUAL_SHARES` always fits in uint256, so previews cannot panic.
     uint256 public constant MAX_TOTAL_SHARES = type(uint256).max - VIRTUAL_SHARES;
+    /// @notice Accounted assets at or below this many atoms (10^-12 of one 18-decimal token) count as dust:
+    /// a deposit the exhausted supply cannot represent retires the outstanding shares and carries the dust
+    /// into the new epoch, so retirees lose at most this much in total.
+    uint256 public constant RETIRE_DUST = VIRTUAL_SHARES;
     IERC20 public immutable token;
     address public policyBook;
     uint256 public totalShares;
@@ -58,7 +62,7 @@ contract CoverPool is Managed, ReentrancyGuard {
     event PolicyBookSet(address indexed policyBook);
     event Deposited(address indexed lp, uint256 assets, uint256 shares);
     event Withdrawn(address indexed lp, uint256 assets, uint256 shares);
-    event SharesRetired(uint256 indexed retiredEpoch, uint256 retiredShares);
+    event SharesRetired(uint256 indexed retiredEpoch, uint256 retiredShares, uint256 dustCarried);
     event CoverReserved(
         uint256 indexed policyId, address indexed beneficiary, uint256 cover, uint256 premium
     );
@@ -114,7 +118,7 @@ contract CoverPool is Managed, ReentrancyGuard {
         bool fits;
         (fits, shares) = _sharesForDeposit(assets, totalShares);
         if (fits) return shares;
-        if (_assets != 0) revert ShareSupplyExhausted();
+        if (_assets > RETIRE_DUST) revert ShareSupplyExhausted();
         (fits, shares) = _sharesForDeposit(assets, 0);
         if (!fits) revert ShareSupplyExhausted();
     }
@@ -123,7 +127,7 @@ contract CoverPool is Managed, ReentrancyGuard {
         return Math.mulDiv(shares, _assets + 1, totalShares + VIRTUAL_SHARES);
     }
 
-    /// @notice Deposit collateral for shares. Blocked while a fully certified policy awaits settlement.
+    /// @notice Deposit collateral for shares. Blocked while a decidable policy awaits settlement or review.
     function deposit(uint256 assets, uint256 minShares) external nonReentrant returns (uint256 shares) {
         if (policyBook == address(0)) revert BookNotConfigured();
         if (assets == 0 || minShares == 0) revert InvalidAmount();
@@ -132,8 +136,8 @@ contract CoverPool is Managed, ReentrancyGuard {
         bool fits;
         (fits, shares) = _sharesForDeposit(assets, totalShares);
         if (!fits) {
-            // Only shares that are already worthless (zero accounted assets) may be retired.
-            if (_assets != 0) revert ShareSupplyExhausted();
+            // Only shares that are worthless up to dust may be retired; the dust stays in the pool.
+            if (_assets > RETIRE_DUST) revert ShareSupplyExhausted();
             _retireShares();
             (fits, shares) = _sharesForDeposit(assets, 0);
             if (!fits) revert ShareSupplyExhausted();
@@ -148,7 +152,7 @@ contract CoverPool is Managed, ReentrancyGuard {
     }
 
     /// @notice Redeem caller-owned shares, bounded by free assets. Reservations cannot be withdrawn.
-    /// @dev Blocked while a fully certified policy awaits settlement, so nobody exits at a stale price.
+    /// @dev Blocked while a decidable policy awaits settlement or review, so nobody exits at a stale price.
     function redeem(uint256 shares, uint256 minAssets) external nonReentrant returns (uint256 assets) {
         if (shares == 0 || minAssets == 0) revert InvalidAmount();
         if (shares > sharesOf(msg.sender)) revert InsufficientShares();
@@ -222,18 +226,19 @@ contract CoverPool is Managed, ReentrancyGuard {
         return (true, Math.mulDiv(x, y, d));
     }
 
-    /// @dev Called only when accounted assets are zero: every outstanding share is worth nothing, so
-    /// no holder loses value when the supply is restarted for the recapitalizing deposit.
+    /// @dev Called only when accounted assets are at most RETIRE_DUST: the outstanding shares are worth at
+    /// most that dust in total, which stays in the pool for the new epoch. Without this a single atom left
+    /// behind an exhausted supply would make the pool unable to accept capital forever.
     function _retireShares() private {
         uint256 retired = totalShares;
-        emit SharesRetired(shareEpoch, retired);
+        emit SharesRetired(shareEpoch, retired, _assets);
         totalShares = 0;
         ++shareEpoch;
     }
 
-    /// @dev Share prices are stale while a fully certified policy is unsettled. Anyone may settle it,
-    /// including the caller, and retry. A core the book cannot read cannot settle anything either, so the
-    /// gate fails open rather than freezing free liquidity.
+    /// @dev Share prices are stale while an open policy can be settled or reviewed against certified
+    /// history. Anyone may do that, including the caller, and retry. A core whose history the book cannot
+    /// read settles nothing, so the gate fails open rather than freezing free liquidity.
     function _requireNoPendingSettlement() private view {
         if (IPolicyBookWiring(policyBook).settlementPending()) revert SettlementPending();
     }
