@@ -1,0 +1,94 @@
+{
+  "exportFiles": [
+    {
+      "path": "dist/FONT-LICENSE.txt",
+      "bytes": 4477,
+      "sha256": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345"
+    },
+    {
+      "path": "dist/assets/ccip-SEsY7MCN.js",
+      "bytes": 2840,
+      "sha256": "1b8cf7ee917d6ce770dbe6239c9c130944a848187d31df737a12b70cb9cb6798"
+    },
+    {
+      "path": "dist/assets/dist-DuNg6fmB.js",
+      "bytes": 99105,
+      "sha256": "cc79ef5929dfb7dae9c654fff463553bb582388dbcb620faa079362c033c24a9"
+    },
+    {
+      "path": "dist/assets/index-C7NTtiEL.js",
+      "bytes": 670039,
+      "sha256": "48f50f286b413876f11f2d9fa4d6e0a0ce32d42823144d74243e4b77f13c0877"
+    },
+    {
+      "path": "dist/assets/index-lhjQNt1C.css",
+      "bytes": 21157,
+      "sha256": "2e7d4fae53df9fa1959082c1fadfad58ae06ac4be8ec2c7335e5633fbd88915d"
+    },
+    {
+      "path": "dist/assets/inter-latin-Dx4kXJAl.woff2",
+      "bytes": 48256,
+      "sha256": "3100e775e8616cd2611beecfa23a4263d7037586789b43f035236a2e6fbd4c62"
+    },
+    {
+      "path": "dist/favicon.svg",
+      "bytes": 189,
+      "sha256": "25e262dea67f5a26148bd311bd0016947516e3e0d3464891df8c9ae13ce5bd41"
+    },
+    {
+      "path": "dist/index.html",
+      "bytes": 1524,
+      "sha256": "b70bc22ab56cbba819d72bac894fc37366fc48f7541c6d3a68ba8a560f566652"
+    },
+    {
+      "path": "dist/share.png",
+      "bytes": 42513,
+      "sha256": "65ac2a7bdc83a6a4a5cc8fd3850992db7f38dd6cf9f8196fe0e82cff78e25882"
+    },
+    {
+      "path": "dist/wallets/LICENSE.txt",
+      "bytes": 1064,
+      "sha256": "5095037afa1ba03be36e04305c01ec9ee600e14377738a026482b1a888c4e365"
+    },
+    {
+      "path": "dist/wallets/coinbase.svg",
+      "bytes": 534,
+      "sha256": "3c403bc21ab7702e67536b0358c667f38ca230f8697ebf0e318d2ed7fda15488"
+    },
+    {
+      "path": "dist/wallets/metamask.svg",
+      "bytes": 1665,
+      "sha256": "892c7dfab8c4ca5682878dda3f42f55a75195d7d365e4adb0832845f3a0a2135"
+    },
+    {
+      "path": "dist/wallets/phantom.svg",
+      "bytes": 861,
+      "sha256": "f841f8112e131259a2e5123177950099c79487e61e77971f4e193e6c374419eb"
+    },
+    {
+      "path": "dist/wallets/rabby.svg",
+      "bytes": 2290,
+      "sha256": "dcae4de88ebfa10cffa1fe28df13d7c8c0b40736ef2b704f1f2fc348e777e443"
+    }
+  ],
+  "exportBytes": 896514,
+  "sourceAndExportAndDocsBytesExcludingThisInventory": 1900845,
+  "directoryBytesExcludingThisInventory": {
+    "web": 960675,
+    "dist": 896514
+  },
+  "submissionLimitBytes": 8388608,
+  "conservativeBundleEstimateBytes": 4850266,
+  "relativeIndexAssets": [
+    "./favicon.svg",
+    "./assets/index-C7NTtiEL.js",
+    "./assets/index-lhjQNt1C.css"
+  ],
+  "runtimeAssetsComplete": true,
+  "generatedDependencyCacheDirectoriesPresent": false,
+  "ignoreFilesChanged": false,
+  "submodules": 0,
+  "existingTrackedFilesChanged": [
+    "README.md"
+  ]
+}

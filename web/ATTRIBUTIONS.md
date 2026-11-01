@@ -1,0 +1,9 @@
+# Frontend assets and guidance
+
+- Inter Latin variable WOFF2: `@fontsource-variable/inter` 5.3.0; SIL Open Font License, retained in `public/FONT-LICENSE.txt` and the export. Original font: [Inter](https://github.com/rsms/inter).
+- MetaMask, Rabby and Phantom SVG wallet marks: extracted unchanged from `@rainbow-me/rainbowkit` 2.2.11. Coinbase mark: supplied wallet-connector reference. RainbowKit's MIT license is retained in `public/wallets/LICENSE.txt` and the export. Wallet marks identify their respective vendors; no endorsement is implied.
+- COVER mark, favicon, six-round illustration and share card: original code/SVG/HTML in this frontend. `scripts/share-card.html` renders the 1200×630 `public/share.png` using the bundled font.
+- Design guidance: [Jakub Krehel's Better Interface](https://github.com/jakubkrehel/skills/tree/267330e1adfc66a718fb65fa6918c1f06d0a689e/skills/better-interface), MIT, commit `267330e1adfc66a718fb65fa6918c1f06d0a689e`, via the provided pinned adaptation.
+- Documentation method: [Paul Bakaus's Impeccable](https://github.com/pbakaus/impeccable/blob/9d715cc4f5564a990ca8345abfdd5df6dc9b41c8/skill/reference/document.md), Apache-2.0, copyright 2025 Paul Bakaus, commit `9d715cc4f5564a990ca8345abfdd5df6dc9b41c8`. Adapted here into an implementation-specific design document. Both guidance licenses are retained in `licenses/DESIGN-GUIDANCE.txt`.
+
+Connector behavior was checked against [Wagmi's Coinbase connector documentation](https://wagmi.sh/react/api/connectors/coinbaseWallet) and [v3 dependency guidance](https://wagmi.sh/react/guides/migrate-from-v2-to-v3). Rabby's supplied reference omitted its actual query parameters; the implemented `_cmd=open-dapp&dapp=...` form follows the [Rabby Mobile universal-link handler](https://github.com/RabbyHub/rabby-mobile/blob/develop/apps/mobile/src/hooks/universalLink.ts) as read on 2026-11-01. Native mobile app opening and passkey enrollment remain untested.

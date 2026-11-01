@@ -1,0 +1,36 @@
+{
+  "sourceCommit": "e4e6668ad2dd701ce96e96160c2e316bb68d38f3",
+  "algorithm": "keccak256(UTF-8 JSON; object keys recursively sorted; array order preserved)",
+  "contracts": [
+    {
+      "name": "MockSQK",
+      "expectedAbiHash": "9ab65faa31ed2e4f5bcebc57601f56082781322d7865bd1896c916a4839907c5",
+      "computedAbiHash": "9ab65faa31ed2e4f5bcebc57601f56082781322d7865bd1896c916a4839907c5",
+      "match": true
+    },
+    {
+      "name": "PremiumModel",
+      "expectedAbiHash": "a5099e0e45034f1d971ddf880a0c62ae4872de458c73eead09d7bdc52bfbbc60",
+      "computedAbiHash": "a5099e0e45034f1d971ddf880a0c62ae4872de458c73eead09d7bdc52bfbbc60",
+      "match": true
+    },
+    {
+      "name": "CoverPool",
+      "expectedAbiHash": "2b3f9947fc2a8c28b321d4bcee44a47556456d788c446389ff442074ff0f9d5a",
+      "computedAbiHash": "2b3f9947fc2a8c28b321d4bcee44a47556456d788c446389ff442074ff0f9d5a",
+      "match": true
+    },
+    {
+      "name": "CoreReader",
+      "expectedAbiHash": "408b44076e4582eea7782cdd5ca33c6aa25407ac842bcbb15ba5f6a9f1d01501",
+      "computedAbiHash": "408b44076e4582eea7782cdd5ca33c6aa25407ac842bcbb15ba5f6a9f1d01501",
+      "match": true
+    },
+    {
+      "name": "PolicyBook",
+      "expectedAbiHash": "3578a09202552a11ad9659eff7c694516883aa1bdef00f17ae5a082c63c4c781",
+      "computedAbiHash": "3578a09202552a11ad9659eff7c694516883aa1bdef00f17ae5a082c63c4c781",
+      "match": true
+    }
+  ]
+}

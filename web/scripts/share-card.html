@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="UTF-8" /><title>COVER share card source</title
+  ><style>
+    @font-face {
+      font-family: Inter;
+      src: url("../src/inter-latin.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      width: 1200px;
+      height: 630px;
+      margin: 0;
+      padding: 64px 72px;
+      background: #111411;
+      color: #eef1e9;
+      font-family: Inter, sans-serif;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 24px;
+    }
+    .brand svg {
+      color: #c2ef87;
+    }
+    h1 {
+      font-size: 80px;
+      line-height: 1.07;
+      letter-spacing: -4px;
+      font-weight: 600;
+      margin: 48px 0 24px;
+    }
+    h1 span {
+      color: #a6b0a1;
+    }
+    .bottom {
+      border-top: 1px solid #2a322a;
+      padding-top: 28px;
+      margin-top: 48px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 24px;
+      color: #a6b0a1;
+    }
+    .tag {
+      color: #c2ef87;
+    }
+    p {
+      font-size: 26px;
+      line-height: 1.5;
+      margin: 0;
+      color: #a6b0a1;
+    }
+  </style>
+  <body>
+    <div class="brand">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <path
+          d="M38 10H17L8 24l9 14h21V28H23l-3-4 3-4h15Z"
+          fill="currentColor"
+        /></svg
+      >SqueekFi <strong>COVER</strong>
+    </div>
+    <h1>COVER for<br /><span>zero-work rounds.</span></h1>
+    <p>Fixed-payout cover. Certified SqueekCore history.</p>
+    <div class="bottom">
+      <span class="tag">Sepolia testnet</span
+      ><span>Mock tokens. Real contract behavior.</span>
+    </div>
+  </body>
+</html>

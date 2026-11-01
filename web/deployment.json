@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "launchId": "aefd0314-9dda-45b4-98df-75759ac4d125",
+  "chainId": 11155111,
+  "repoUrl": "https://github.com/identity-md-launches/launch-2814-sqi",
+  "sourceCommit": "e4e6668ad2dd701ce96e96160c2e316bb68d38f3",
+  "attestationHash": "4575ff151a0f304773c5c7ac0b8e666d2b6e0facd1a61361a3e610a2b2468e69",
+  "manifest": {
+    "kind": "evm_contracts",
+    "contracts": [
+      {
+        "contract": "MockSQK",
+        "constructorArgs": [
+          "$owner"
+        ]
+      },
+      {
+        "contract": "PremiumModel",
+        "constructorArgs": [
+          "$owner"
+        ]
+      },
+      {
+        "contract": "CoverPool",
+        "constructorArgs": [
+          "$owner",
+          "$contract:MockSQK"
+        ]
+      },
+      {
+        "contract": "CoreReader",
+        "constructorArgs": [
+          "0x74665dAecA35A2303e767E76a2FF1FB6F93e119f"
+        ]
+      },
+      {
+        "contract": "PolicyBook",
+        "constructorArgs": [
+          "$owner",
+          "$contract:MockSQK",
+          "$contract:PremiumModel",
+          "$contract:CoverPool",
+          "$contract:CoreReader"
+        ]
+      }
+    ],
+    "notes": "SqueekFi zero-work round COVER on Sepolia (11155111). Deploy only these five accepted application contracts in the listed order, with explicit $owner ownership and zero native value. MockSQK is the mock collateral called mSQK in the brief: name and symbol SQI, 18 decimals, initial supply 100000000 tokens minted to $owner; only the owner may mint more. CoreReader reads only SqueekCore at 0x74665dAecA35A2303e767E76a2FF1FB6F93e119f. Rounds after settledThroughRound remain unknown; missing active records within certified history count as zero-work. Policies allow N in {6,12,24,144} and T in {30%,50%,70%}, require startRound above both settledThroughRound and currentRound and at most MAX_LEAD_ROUNDS (1008) beyond currentRound, and cannot open while PolicyBook or Core is paused. Anyone may settle once certified history fixes the outcome, at the latest when the frontier reaches the inclusive end round; unknown rounds never count as zero-work. The holder receives exactly C mock tokens iff zeroRounds/N >= T; otherwise no payout. Premiums remain in the LP pool in either outcome, and reserved cover cannot be withdrawn. PremiumModel uses an owner-configured table plus a utilization surcharge. After deployment, the owner must bind CoverPool.setPolicyBook once to the confirmed PolicyBook address and configure the twelve PremiumModel.setRate entries; LPs then supply mock collateral through deposits. These are separate operational steps, not initialization calls executed by this manifest. No mainnet deployment, real SQK, submitRounds, application proxies or upgrades, UI, keepers, or ETH funding. See README.md, THREATS.md and LAUNCH.md for operation and risks, including reservations remaining locked if Core certification stalls."
+  },
+  "contracts": [
+    {
+      "name": "MockSQK",
+      "address": "0x5e6729156ed49a0de73ddacb6529c363f2bd38bb",
+      "txHash": "0x9f950e9dbf4ee07dda07f2368b30c033882f4f70de47a771ecfd7d365463c41a",
+      "blockNumber": 12040209,
+      "creationCodeHash": "8a3ccae96476bc5237f161c77b6488ebe39c44e3d4e70d7ab29d87dd962dd43a",
+      "abiHash": "9ab65faa31ed2e4f5bcebc57601f56082781322d7865bd1896c916a4839907c5"
+    },
+    {
+      "name": "PremiumModel",
+      "address": "0x66d9003653ee9b898fc1e6abb83620dd8e39deda",
+      "txHash": "0x9f950e9dbf4ee07dda07f2368b30c033882f4f70de47a771ecfd7d365463c41a",
+      "blockNumber": 12040209,
+      "creationCodeHash": "b30fc8d0c6dc1feaf2dbe820203ed616cb80793229739c2861fba07bc71d8196",
+      "abiHash": "a5099e0e45034f1d971ddf880a0c62ae4872de458c73eead09d7bdc52bfbbc60"
+    },
+    {
+      "name": "CoverPool",
+      "address": "0x95524725736cf4ec96e29a6ed73c33335c61c2a9",
+      "txHash": "0x9f950e9dbf4ee07dda07f2368b30c033882f4f70de47a771ecfd7d365463c41a",
+      "blockNumber": 12040209,
+      "creationCodeHash": "12c43257df2d228fd743b18e3b6d1f5df623674d20f4c003344c9977c949d162",
+      "abiHash": "2b3f9947fc2a8c28b321d4bcee44a47556456d788c446389ff442074ff0f9d5a"
+    },
+    {
+      "name": "CoreReader",
+      "address": "0x5fbe17ecdae6cab9d657313ba5704ea3e19ab72d",
+      "txHash": "0x9f950e9dbf4ee07dda07f2368b30c033882f4f70de47a771ecfd7d365463c41a",
+      "blockNumber": 12040209,
+      "creationCodeHash": "6747d747261fc44c7e4992785c5d362eee36ca9b0aa90e5a1ecaf0a0c0bedf58",
+      "abiHash": "408b44076e4582eea7782cdd5ca33c6aa25407ac842bcbb15ba5f6a9f1d01501"
+    },
+    {
+      "name": "PolicyBook",
+      "address": "0xff8f5214c0895a8805ebc0dd5105ab7956dd67db",
+      "txHash": "0x9f950e9dbf4ee07dda07f2368b30c033882f4f70de47a771ecfd7d365463c41a",
+      "blockNumber": 12040209,
+      "creationCodeHash": "5f612954d1ada11bff0282755c6fc97881e6983494c77b8819ade641c6cdf2e2",
+      "abiHash": "3578a09202552a11ad9659eff7c694516883aa1bdef00f17ae5a082c63c4c781"
+    }
+  ],
+  "abiInstructions": "Build ABIs from this exact source commit; compare canonicalKeccak(abi) with abiHash. Verify deployed code on the stated chain before enabling transactions."
+}

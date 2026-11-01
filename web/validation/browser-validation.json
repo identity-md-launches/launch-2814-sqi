@@ -1,0 +1,80 @@
+{
+  "testedAt": "2026-11-01T13:43:10.871Z",
+  "mode": "Offline RPC and EIP-6963 wallet fixtures; no real transaction sent",
+  "results": [
+    {
+      "name": "Responsive production export, first-screen action, local assets and accessibility",
+      "status": "passed",
+      "measurements": [
+        {
+          "viewport": 320,
+          "width": 320,
+          "quoteBottom": 873.78125,
+          "font": true
+        },
+        {
+          "viewport": 390,
+          "width": 390,
+          "quoteBottom": 783.390625,
+          "font": true
+        },
+        {
+          "viewport": 768,
+          "width": 768,
+          "quoteBottom": 848.171875,
+          "font": true
+        },
+        {
+          "viewport": 1440,
+          "width": 1440,
+          "quoteBottom": 703.390625,
+          "font": true
+        }
+      ],
+      "axeViolations": 0,
+      "textEnlargement": "200% root font, no horizontal overflow"
+    },
+    {
+      "name": "Quote validates inputs, all terms, stale responses and activation errors",
+      "status": "passed"
+    },
+    {
+      "name": "Offline state is explicit, preserves read-only controls, and retries",
+      "status": "passed"
+    },
+    {
+      "name": "Phone wallet sheet uses four deep links, local marks and focus return",
+      "status": "passed"
+    },
+    {
+      "name": "EIP-6963 discovery, rejection, wrong chain and add-chain fallback",
+      "status": "passed"
+    },
+    {
+      "name": "Exact approval, openPolicy calldata, receipt and emitted policy ID",
+      "status": "passed"
+    },
+    {
+      "name": "LP preview, exact deposit approval, minimum output and redeem raw shares",
+      "status": "passed"
+    },
+    {
+      "name": "Policy lookup, permissionless settle, unknown prefix and review",
+      "status": "passed"
+    },
+    {
+      "name": "RPC code mismatch gates writes; transaction rejection and reversion stay recoverable",
+      "status": "passed"
+    },
+    {
+      "name": "Keyboard tabs, missing liquidity, settlement gate and anchor navigation",
+      "status": "passed"
+    },
+    {
+      "name": "WebKit primary quote interaction",
+      "status": "not run",
+      "limitation": "WebKit could not start: browserType.launch: \n╔══════════════════════════════════════════════════════╗\n║ Host system is missing dependencies to run browsers. ║\n║ Missing libraries:                                   ║\n║     libgstreamer-1.0.so.0                            ║\n║     libgtk-4.so.1                                    ║\n║     libpangocairo-1.0.so.0                           ║\n║     libgdk_pixbuf-2.0.so.0                           ║",
+      "unperformed": true
+    }
+  ]
+}

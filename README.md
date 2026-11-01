@@ -1,10 +1,79 @@
 # SqueekFi zero-work COVER
 
-A Sepolia-only Foundry application for fixed payouts on certified zero-work rounds. The five contracts are `MockSQK`, `PremiumModel`, `CoverPool`, `CoreReader`, and `PolicyBook`. All dependencies needed by the build and tests are vendored as ordinary source files.
+A Sepolia-only Foundry application and static COVER demo for fixed payouts on certified zero-work rounds. The five contracts are `MockSQK`, `PremiumModel`, `CoverPool`, `CoreReader`, and `PolicyBook`. Contract dependencies are vendored as ordinary source files; the frontend uses the npm lockfile in `web/`.
 
 `MockSQK` is the mock collateral called **mSQK** in the brief. Its ERC-20 **name and symbol are SQI**, following the explicit token metadata. It has 18 decimals and an **initial** supply of 100,000,000 tokens, allocated to `$owner`. The requested owner-only faucet can mint more, so that initial supply is not a lifetime cap. There is no second launch token, and real SQK is never accepted or moved.
 
-## Build and check
+## Static demo website
+
+The deployable export is **[dist/index.html](dist/index.html)**, with complete relative assets in `dist/`. Frontend source, its own package manifest and reproducible lockfile live in [web/](web/). The stack is Vite, React, TypeScript, viem, Wagmi and TanStack Query; the existing Foundry configuration is separate.
+
+### Install, preview and rebuild
+
+Use Node.js 22.12+ (or 24+) and npm:
+
+```sh
+cd web
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run preview -- --port 4173
+```
+
+Open the local URL printed by preview. `npm run build` replaces the repository-root `dist/`. For development use `npm run dev`. For a plain static preview from the repository root, `python3 -m http.server 4173 --directory dist` also works. No backend, environment file, private key, wallet project ID or API token is needed.
+
+The export uses `base: './'`, hash anchors and local fonts, icons and share image. Serve the **contents of `dist/`** at the hosting root or any gateway subpath. The contributor publisher can pin this exact folder to IPFS after submission. This run produced the export; it did not publish a CID or register an ENS name. Social-image URL resolution remains dependent on the eventual gateway/crawler.
+
+Keep `node_modules`, browser downloads and package caches out of submissions at every depth. They are not included here. No ignore file was changed. No npm tarballs or vendored registry are needed for offline verification.
+
+### Using COVER
+
+The default page reads Sepolia without a wallet. Choose cover amount, duration and threshold, then **Get quote**. Automatic start is two rounds after the greater of current round and frontier; an optional manual start is limited by the contract's 1,008-round lead cap. A quote uses the actual `PolicyBook.quote`, has a five-minute deadline from the latest block, and sets its exact premium as the maximum. Changed inputs invalidate it.
+
+Connect through the header when ready to transact. Desktop providers are discovered by EIP-6963; phone browsers offer MetaMask, Coinbase Wallet, Rabby and Phantom deep links. Coinbase Smart Wallet uses its SDK without a relay/project ID. Wrong-chain transactions remain unavailable; the wallet control switches/adds Sepolia using the supplied network parameters. Previously authorized connections can reconnect through Wagmi storage.
+
+Opening and deposits separate **Approve mSQK** from the subsequent action. Allowances are exact, not unlimited. The Liquidity panel previews deposits and redemptions with a 0.5% minimum-output tolerance and checks the share epoch. Shares are **raw integer units**, not 18-decimal token balances. The Settle panel looks up any policy, shows the holder and certified progress, and offers permissionless settlement or review. Review is useful when the LP gate needs maintenance. Every write is simulated first; pending, replacement, reverted and unconfirmed receipts have explicit states and Sepolia explorer links.
+
+mSQK is the UI name of MockSQK collateral; its deployed ERC-20 symbol is **SQI**, with 18 decimals. Only its owner can mint it. Sepolia ETH is separately needed for gas. The UI neither mints tokens nor activates owner settings.
+
+### Deployment and observed availability
+
+All six addresses and the three supplied public RPC endpoints are centralized in [web/src/config.ts](web/src/config.ts). The five application ABIs were compiled from source commit `e4e6668ad2dd701ce96e96160c2e316bb68d38f3`; every canonical Keccak ABI hash matches [web/deployment.json](web/deployment.json). The browser compares application runtime bytecode against the compiled source with immutable slots normalized, then checks each immutable address getter. These checks run before wallet writes as well as on page load. SqueekCore is read-only, with no write ABI exposed.
+
+At the recorded live check on **2026-11-01 13:28 UTC**, block **12,041,301**, all app code/dependency checks passed. Core frontier was **1973**, clock round **2820**, and the pool's assets, reserves and open policies were all **zero**. The pool was **not bound to PolicyBook**, and all twelve premium rates were **unconfigured**. The UI reports these states honestly. Activation and Core liveness remain the existing owner's operational responsibility under [LAUNCH.md](LAUNCH.md); no activation or funded transaction was attempted.
+
+### Website checks actually run
+
+- Production build and TypeScript check passed; five unit tests passed, including exact amounts, all twelve threshold boundaries, start bounds and nonzero LP minimums.
+- Ten Chromium interaction scenarios passed against the production export at a `/preview/` subpath: reads/offline retry, forms, wallet discovery/rejection/network switching, exact approvals, open/deposit/redeem/settle/review calldata, receipt handling, code mismatch gating, keyboard and mobile layout. These use explicit offline fixtures; no real transaction is signed.
+- Real Sepolia reads, an activation-blocked quote and production mobile/desktop screenshots were also inspected separately. Axe reported zero violations in the checked initial view. No horizontal overflow at 320, 390, 768 or 1440px, including the separate 200% root-text enlargement check.
+- The pinned taste probe passed 15/16 checks. Its one remaining flag mistakes the required header Connect button for a heading kicker; visual inspection confirmed a normal wallet utility. The repeated-copy finding and applicable accessibility/UI defects were fixed.
+- WebKit was attempted but could not launch because required shared libraries are missing. Native mobile wallets, real passkeys, screen-reader sessions and native browser zoom were not tested. No production safety claim is made.
+
+Build warnings concern a 670kB main JavaScript chunk (about 196kB gzip), client-only directives in dependencies, and an externalized unused worker module in an upstream dependency. Chromium loaded the production assets without console or missing-resource errors.
+
+See [VALIDATION.md](VALIDATION.md) for commands, the six-domain review, findings and coverage limits, [DESIGN.md](DESIGN.md) for implemented tokens/components, and [web/validation/](web/validation/) for recorded evidence. This is worker validation, not independent certification.
+
+To repeat the browser scenarios on a system with browser dependencies installed:
+
+```sh
+cd web
+npx playwright install chromium webkit
+npm run test:browser
+npm run check:abis
+npx tsx scripts/live-check.ts ../artifacts/live-check.json
+```
+
+The last command reads the real public RPCs; it sends no transactions. The browser fixture suite is offline. To compare ABIs directly to a fresh Foundry build, run from the repository root:
+
+```sh
+forge build --out test/scratch/forge-out --cache-path test/scratch/forge-cache
+cd web
+npm run check:abis -- --artifacts ../test/scratch/forge-out
+```
+
+## Contract build and check
 
 Run from this directory with Foundry and Solidity 0.8.26 installed:
 

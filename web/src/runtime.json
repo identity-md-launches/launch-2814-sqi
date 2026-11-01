@@ -1,0 +1,198 @@
+{
+  "MockSQK": {
+    "normalizedHash": "0x5c748ed01c91a83c2d3d556efdcc6ece816dab942b1eaa4ee4317881d9aa9ff0",
+    "byteLength": 2390,
+    "immutableReferences": []
+  },
+  "PremiumModel": {
+    "normalizedHash": "0x8d590e8f8745abd0f1dea05014d8de9a77bcbd2320a19737cfd081c1a932d076",
+    "byteLength": 2245,
+    "immutableReferences": []
+  },
+  "CoverPool": {
+    "normalizedHash": "0xb264c00f168d3c733580ecaeb3c6155a1c3d050da66d65d3d010ffe630287e9e",
+    "byteLength": 6131,
+    "immutableReferences": [
+      {
+        "start": 947,
+        "length": 32
+      },
+      {
+        "start": 1247,
+        "length": 32
+      },
+      {
+        "start": 1317,
+        "length": 32
+      },
+      {
+        "start": 2061,
+        "length": 32
+      },
+      {
+        "start": 2131,
+        "length": 32
+      },
+      {
+        "start": 2758,
+        "length": 32
+      },
+      {
+        "start": 2829,
+        "length": 32
+      },
+      {
+        "start": 3431,
+        "length": 32
+      },
+      {
+        "start": 3502,
+        "length": 32
+      },
+      {
+        "start": 4058,
+        "length": 32
+      },
+      {
+        "start": 4495,
+        "length": 32
+      }
+    ]
+  },
+  "CoreReader": {
+    "normalizedHash": "0x13ab87dd8aa59c07af3a95208ffe33a65e6e80e8e1e5b327a060afd63d08b3c7",
+    "byteLength": 4616,
+    "immutableReferences": [
+      {
+        "start": 293,
+        "length": 32
+      },
+      {
+        "start": 933,
+        "length": 32
+      },
+      {
+        "start": 1568,
+        "length": 32
+      },
+      {
+        "start": 2061,
+        "length": 32
+      },
+      {
+        "start": 2135,
+        "length": 32
+      },
+      {
+        "start": 2392,
+        "length": 32
+      }
+    ]
+  },
+  "PolicyBook": {
+    "normalizedHash": "0x7307fef317cdf21bfc1fa993a770dbc3705da94d8e2f4dc740ccee9588ff9d43",
+    "byteLength": 10295,
+    "immutableReferences": [
+      {
+        "start": 933,
+        "length": 32
+      },
+      {
+        "start": 1647,
+        "length": 32
+      },
+      {
+        "start": 1775,
+        "length": 32
+      },
+      {
+        "start": 1846,
+        "length": 32
+      },
+      {
+        "start": 2002,
+        "length": 32
+      },
+      {
+        "start": 2223,
+        "length": 32
+      },
+      {
+        "start": 2319,
+        "length": 32
+      },
+      {
+        "start": 3321,
+        "length": 32
+      },
+      {
+        "start": 595,
+        "length": 32
+      },
+      {
+        "start": 3894,
+        "length": 32
+      },
+      {
+        "start": 407,
+        "length": 32
+      },
+      {
+        "start": 2036,
+        "length": 32
+      },
+      {
+        "start": 2115,
+        "length": 32
+      },
+      {
+        "start": 2259,
+        "length": 32
+      },
+      {
+        "start": 3176,
+        "length": 32
+      },
+      {
+        "start": 3363,
+        "length": 32
+      },
+      {
+        "start": 3944,
+        "length": 32
+      },
+      {
+        "start": 4072,
+        "length": 32
+      },
+      {
+        "start": 7987,
+        "length": 32
+      },
+      {
+        "start": 789,
+        "length": 32
+      },
+      {
+        "start": 2698,
+        "length": 32
+      },
+      {
+        "start": 2971,
+        "length": 32
+      },
+      {
+        "start": 3536,
+        "length": 32
+      },
+      {
+        "start": 5154,
+        "length": 32
+      },
+      {
+        "start": 5554,
+        "length": 32
+      }
+    ]
+  }
+}

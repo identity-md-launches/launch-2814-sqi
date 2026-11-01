@@ -1,0 +1,192 @@
+{
+  "checkedAt": "2026-11-01T13:28:16.544Z",
+  "network": "Sepolia",
+  "chainId": 11155111,
+  "addresses": {
+    "PolicyBook": "0xff8f5214c0895a8805ebc0dd5105ab7956dd67db",
+    "CoverPool": "0x95524725736cf4ec96e29a6ed73c33335c61c2a9",
+    "PremiumModel": "0x66d9003653ee9b898fc1e6abb83620dd8e39deda",
+    "CoreReader": "0x5fbe17ecdae6cab9d657313ba5704ea3e19ab72d",
+    "MockSQK": "0x5e6729156ed49a0de73ddacb6529c363f2bd38bb",
+    "SqueekCore": "0x74665dAecA35A2303e767E76a2FF1FB6F93e119f"
+  },
+  "rpcUrls": [
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://rpc.sepolia.ethpandaops.io",
+    "https://sepolia.rpc.sentio.xyz"
+  ],
+  "snapshot": {
+    "status": "fulfilled",
+    "value": {
+      "block": "12041301",
+      "timestamp": "1793539692",
+      "fetchedAt": 1793539696335,
+      "errors": [],
+      "frontier": "1973",
+      "current": "2820",
+      "corePaused": false,
+      "assets": "0",
+      "reserved": "0",
+      "free": "0",
+      "open": "0",
+      "nextId": "1",
+      "decide": "0",
+      "paused": false,
+      "configured": false,
+      "pending": false
+    }
+  },
+  "deployment": {
+    "status": "fulfilled",
+    "value": {
+      "block": "12041301"
+    }
+  },
+  "rates": [
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 6,
+        "thresholdBps": 3000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 6,
+        "thresholdBps": 5000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 6,
+        "thresholdBps": 7000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 12,
+        "thresholdBps": 3000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 12,
+        "thresholdBps": 5000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 12,
+        "thresholdBps": 7000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 24,
+        "thresholdBps": 3000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 24,
+        "thresholdBps": 5000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 24,
+        "thresholdBps": 7000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 144,
+        "thresholdBps": 3000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 144,
+        "thresholdBps": 5000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    },
+    {
+      "status": "fulfilled",
+      "value": {
+        "rounds": 144,
+        "thresholdBps": 7000,
+        "rate": [
+          0,
+          0,
+          false
+        ]
+      }
+    }
+  ],
+  "signedTransactions": 0
+}
