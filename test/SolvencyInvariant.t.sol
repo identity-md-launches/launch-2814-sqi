@@ -24,7 +24,13 @@ contract CoverHandler is Test {
     uint256 public premiums;
     uint256 public payouts;
     uint256 public donations;
+    uint256 public opened;
+    uint256 public roundTrips;
+    uint256 public rejectedSettlements;
     mapping(uint64 round => bool active) public activeRounds;
+    mapping(uint256 => bytes32) public policyTerms;
+    mapping(uint256 => PolicyBook.Status) public policyStatus;
+    mapping(uint256 => uint16) public policyZeros;
 
     constructor(
         MockSQK token_,
@@ -57,7 +63,7 @@ contract CoverHandler is Test {
         deposits += amount;
     }
 
-    function redeem(uint8 actorSeed, uint96 shareSeed) external {
+    function redeem(uint8 actorSeed, uint256 shareSeed) external {
         address actor = actors[actorSeed % 3];
         uint256 maximum = Math.mulDiv(
             pool.freeAssets(), pool.totalShares() + pool.VIRTUAL_SHARES(), pool.totalAssets() + 1
@@ -85,8 +91,11 @@ contract CoverHandler is Test {
         (uint256 premium,) = book.quote(current + 1, n, t, cover);
         vm.startPrank(actor);
         token.approve(address(book), premium);
-        book.openPolicy(current + 1, n, t, cover, premium, block.timestamp);
+        uint256 id = book.openPolicy(current + 1, n, t, cover, premium, block.timestamp);
         vm.stopPrank();
+        assertEq(id, ++opened, "successful opens alone allocate IDs");
+        policyTerms[id] = keccak256(abi.encode(actor, current + 1, current + n, n, t, cover, premium));
+        policyStatus[id] = PolicyBook.Status.Open;
         premiums += premium;
     }
 
@@ -122,7 +131,93 @@ contract CoverHandler is Test {
         uint256 paid = book.settle(id);
         assertEq(paid, expected);
         assertEq(token.balanceOf(policy.holder), before + expected);
+        policyZeros[id] = uint16(zeros);
+        policyStatus[id] = expected == 0 ? PolicyBook.Status.Expired : PolicyBook.Status.Paid;
         payouts += paid;
+    }
+
+    /// @dev Multiple immediate cycles at the current share price, including after premiums and losses.
+    function roundTrip(uint8 actorSeed, uint96 amountSeed, uint8 cyclesSeed) external {
+        address actor = actors[actorSeed % 3];
+        uint256 cycles = bound(cyclesSeed, 1, 8);
+        uint256 originalBalance = token.balanceOf(actor);
+        uint256 originalAssets = pool.totalAssets();
+        uint256 originalReserved = pool.reserved();
+        for (uint256 i; i < cycles; ++i) {
+            uint256 balance = token.balanceOf(actor);
+            if (balance == 0) break;
+            uint256 amount = bound(amountSeed, 1, Math.min(balance, 100 ether));
+            uint256 quotedShares = pool.previewDeposit(amount);
+            if (quotedShares == 0) break;
+            uint256 originalShares = pool.sharesOf(actor);
+            vm.startPrank(actor);
+            token.approve(address(pool), amount);
+            uint256 shares = pool.deposit(amount, quotedShares);
+            deposits += amount;
+            assertEq(shares, quotedShares);
+            assertEq(pool.sharesOf(actor), originalShares + shares);
+            uint256 quotedAssets = pool.previewRedeem(shares);
+            assertLe(quotedAssets, amount, "immediate cycle creates no assets");
+            if (quotedAssets == 0) {
+                vm.expectRevert(CoverPool.Slippage.selector);
+                pool.redeem(shares, 1);
+                vm.stopPrank();
+                break;
+            }
+            uint256 returned = pool.redeem(shares, quotedAssets);
+            vm.stopPrank();
+            assertEq(returned, quotedAssets);
+            assertEq(pool.sharesOf(actor), originalShares);
+            assertLe(token.balanceOf(actor), balance);
+            withdrawals += returned;
+            ++roundTrips;
+        }
+        assertLe(token.balanceOf(actor), originalBalance);
+        assertGe(pool.totalAssets(), originalAssets);
+        assertEq(pool.reserved(), originalReserved);
+    }
+
+    function reprice(uint8 durationSeed, uint8 thresholdSeed, uint16 baseSeed, uint16 slopeSeed) external {
+        uint16[4] memory durations = [uint16(6), 12, 24, 144];
+        uint16[3] memory thresholds = [uint16(3000), 5000, 7000];
+        uint16 base = uint16(bound(baseSeed, 1, 10_000));
+        uint16 slope = uint16(bound(slopeSeed, 0, 10_000 - base));
+        PremiumModel model = book.premiumModel();
+        vm.prank(owner);
+        model.setRate(durations[durationSeed % 4], thresholds[thresholdSeed % 3], base, slope);
+    }
+
+    function rejectEarlyOrReplay(uint96 idSeed, uint8 actorSeed) external {
+        if (opened == 0) return;
+        uint256 id = bound(idSeed, 1, opened);
+        PolicyBook.Policy memory policy = book.getPolicy(id);
+        bytes memory reason;
+        if (policy.status != PolicyBook.Status.Open) {
+            reason = abi.encodeWithSelector(PolicyBook.PolicyNotOpen.selector);
+        } else if (policy.endRound > core.frontier()) {
+            reason =
+                abi.encodeWithSelector(CoreReader.UnknownRounds.selector, policy.endRound, core.frontier());
+        } else {
+            return;
+        }
+        uint256 assets = pool.totalAssets();
+        uint256 reserved = pool.reserved();
+        uint256 holderBalance = token.balanceOf(policy.holder);
+        vm.expectRevert(reason);
+        vm.prank(actors[actorSeed % 3]);
+        book.settle(id);
+        assertEq(keccak256(abi.encode(book.getPolicy(id))), keccak256(abi.encode(policy)));
+        assertEq(pool.totalAssets(), assets);
+        assertEq(pool.reserved(), reserved);
+        assertEq(token.balanceOf(policy.holder), holderBalance);
+        ++rejectedSettlements;
+    }
+
+    function transferBetweenActors(uint8 fromSeed, uint8 toSeed, uint96 amountSeed) external {
+        address from = actors[fromSeed % 3];
+        uint256 amount = bound(amountSeed, 0, token.balanceOf(from));
+        vm.prank(from);
+        token.transfer(actors[toSeed % 3], amount);
     }
 
     function donate(uint8 actorSeed, uint96 amountSeed) external {
@@ -146,6 +241,9 @@ contract CoverHandler is Test {
     }
 }
 
+/// forge-config: default.invariant.runs = 256
+/// forge-config: default.invariant.depth = 64
+/// forge-config: default.invariant.fail-on-revert = true
 contract SolvencyInvariantTest is CoverFixture {
     CoverHandler internal handler;
 
@@ -153,7 +251,7 @@ contract SolvencyInvariantTest is CoverFixture {
         super.setUp();
         handler = new CoverHandler(token, pool, book, owner, [lp, alice, bob]);
         targetContract(address(handler));
-        bytes4[] memory selectors = new bytes4[](8);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = CoverHandler.deposit.selector;
         selectors[1] = CoverHandler.redeem.selector;
         selectors[2] = CoverHandler.open.selector;
@@ -162,6 +260,10 @@ contract SolvencyInvariantTest is CoverFixture {
         selectors[5] = CoverHandler.donate.selector;
         selectors[6] = CoverHandler.pause.selector;
         selectors[7] = CoverHandler.elapse.selector;
+        selectors[8] = CoverHandler.roundTrip.selector;
+        selectors[9] = CoverHandler.reprice.selector;
+        selectors[10] = CoverHandler.rejectEarlyOrReplay.selector;
+        selectors[11] = CoverHandler.transferBetweenActors.selector;
         targetSelector(FuzzSelector(address(handler), selectors));
     }
 
@@ -184,6 +286,7 @@ contract SolvencyInvariantTest is CoverFixture {
     }
 
     function invariant_assetsAreConservedAndSharesReconcile() public view {
+        assertLe(pool.totalShares(), type(uint256).max - pool.VIRTUAL_SHARES(), "share denominator overflows");
         assertEq(
             pool.totalAssets() + handler.withdrawals() + handler.payouts(),
             1000 ether + handler.deposits() + handler.premiums()
@@ -192,6 +295,43 @@ contract SolvencyInvariantTest is CoverFixture {
         assertEq(pool.totalShares(), pool.sharesOf(lp) + pool.sharesOf(alice) + pool.sharesOf(bob));
         assertEq(token.balanceOf(address(book)), 0);
         assertEq(token.allowance(address(book), address(pool)), 0);
+        assertLe(
+            pool.previewRedeem(pool.sharesOf(lp)) + pool.previewRedeem(pool.sharesOf(alice))
+                + pool.previewRedeem(pool.sharesOf(bob)),
+            pool.totalAssets(),
+            "aggregate LP redemption claims exceed NAV"
+        );
+        assertEq(
+            token.balanceOf(owner) + token.balanceOf(lp) + token.balanceOf(alice) + token.balanceOf(bob)
+                + token.balanceOf(address(pool)) + token.balanceOf(address(book)),
+            token.totalSupply(),
+            "cover and LP flows cannot create or lose tokens"
+        );
+    }
+
+    function invariant_policyTermsAndTerminalStatesMatchPurchaseHistory() public view {
+        assertEq(book.nextPolicyId(), handler.opened() + 1);
+        uint256 collected;
+        uint256 paid;
+        for (uint256 id = 1; id <= handler.opened(); ++id) {
+            PolicyBook.Policy memory p = book.getPolicy(id);
+            assertEq(
+                keccak256(
+                    abi.encode(
+                        p.holder, p.startRound, p.endRound, p.rounds, p.thresholdBps, p.cover, p.premium
+                    )
+                ),
+                handler.policyTerms(id),
+                "purchase terms changed"
+            );
+            assertEq(uint8(p.status), uint8(handler.policyStatus(id)), "policy state differs from history");
+            assertEq(p.zeroRounds, handler.policyZeros(id));
+            assertTrue(pool.usedPolicyIds(id), "reservation ID lost its replay protection");
+            collected += p.premium;
+            if (p.status == PolicyBook.Status.Paid) paid += p.cover;
+        }
+        assertEq(collected, handler.premiums());
+        assertEq(paid, handler.payouts());
     }
 
     function test_handlerExercisesSuccessfulPayoutAndRedemption() public {
@@ -204,5 +344,36 @@ contract SolvencyInvariantTest is CoverFixture {
         assertGt(handler.withdrawals(), 0);
         invariant_allObligationsRemainFullyBacked();
         invariant_assetsAreConservedAndSharesReconcile();
+        invariant_policyTermsAndTerminalStatesMatchPurchaseHistory();
+    }
+
+    function test_handlerExercisesRoundingRepricingFailureAndExpiryPaths() public {
+        handler.open(1, 100 ether, 0, 0);
+        handler.rejectEarlyOrReplay(1, 2);
+        handler.reprice(0, 0, 10_000, 0);
+        handler.roundTrip(2, 1 ether + 1, 8);
+        handler.advance(7, type(uint256).max);
+        handler.settle(1, 0);
+        handler.rejectEarlyOrReplay(1, 2);
+        handler.roundTrip(0, 1 ether + 1, 8);
+        handler.transferBetweenActors(1, 2, 1 ether);
+        assertEq(handler.roundTrips(), 16);
+        assertEq(handler.rejectedSettlements(), 2);
+        assertEq(uint8(book.getPolicy(1).status), uint8(PolicyBook.Status.Expired));
+        invariant_allObligationsRemainFullyBacked();
+        invariant_assetsAreConservedAndSharesReconcile();
+        invariant_policyTermsAndTerminalStatesMatchPurchaseHistory();
+    }
+
+    function test_handlerRoundTripsAfterCoveredLossAndWhilePaused() public {
+        handler.open(1, 100 ether, 0, 0);
+        handler.advance(7, 0);
+        handler.settle(1, 2);
+        handler.pause(true, true);
+        handler.roundTrip(2, 3 ether + 1, 8);
+        assertEq(handler.roundTrips(), 8);
+        invariant_allObligationsRemainFullyBacked();
+        invariant_assetsAreConservedAndSharesReconcile();
+        invariant_policyTermsAndTerminalStatesMatchPurchaseHistory();
     }
 }
