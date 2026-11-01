@@ -46,6 +46,7 @@ function Metric({
 function LiveDashboard({
   snapshot,
   loading,
+  paused,
   failed,
   error,
   onRefresh,
@@ -55,6 +56,7 @@ function LiveDashboard({
 }: {
   snapshot?: Snapshot;
   loading: boolean;
+  paused: boolean;
   failed: boolean;
   error: unknown;
   onRefresh: () => void;
@@ -70,6 +72,7 @@ function LiveDashboard({
     snapshot &&
     (now - snapshot.fetchedAt > 90_000 ||
       now / 1000 - Number(snapshot.timestamp) > 180);
+  const unavailable = failed || paused;
   return (
     <section
       id="live"
@@ -85,29 +88,31 @@ function LiveDashboard({
         </div>
         <button
           className={
-            failed && !refreshing ? "button subtle failed" : "button subtle"
+            unavailable && !refreshing ? "button subtle failed" : "button subtle"
           }
           onClick={onRefresh}
           disabled={refreshing}
-          aria-describedby={failed ? "live-error" : undefined}
+          aria-describedby={unavailable ? "live-error" : undefined}
         >
-          <Icon name={failed && !refreshing ? "alert" : "refresh"} />
-          {refreshing ? "Refreshing…" : failed ? "Retry" : "Refresh"}
+          <Icon name={unavailable && !refreshing ? "alert" : "refresh"} />
+          {refreshing ? "Refreshing…" : unavailable ? "Retry" : "Refresh"}
         </button>
       </div>
       <div className="data-status small">
         <span
-          className={`status-dot ${loading || failed || stale ? "warn" : ""}`}
+          className={`status-dot ${loading || unavailable || stale ? "warn" : ""}`}
           aria-hidden="true"
         />
-        {loading ? (
+        {paused ? (
+          "Offline"
+        ) : loading ? (
           "Reading Sepolia…"
         ) : !snapshot ? (
           "Live data unavailable"
         ) : (
           <>
             <span>
-              {failed || stale ? "Last successful read" : "Read at"}{" "}
+              {unavailable || stale ? "Last successful read" : "Read at"}{" "}
               {new Date(snapshot.fetchedAt).toLocaleTimeString()}
             </span>
             <a
@@ -120,17 +125,21 @@ function LiveDashboard({
             </a>
           </>
         )}
-        <span className="refresh-note">Refreshes every 30 seconds</span>
+        <span className="refresh-note">
+          {paused ? "Live reads paused" : "Refreshes every 30 seconds"}
+        </span>
       </div>
-      {failed && (
+      {unavailable && (
         <p role="status" className="notice error" id="live-error">
-          {explainError(error)}{" "}
+          {paused
+            ? "You are offline. Reconnect, then retry."
+            : explainError(error)}{" "}
           {snapshot
             ? "Values below are from the last successful read."
             : "No balances or rounds are estimated."}
         </p>
       )}
-      {stale && !failed && (
+      {stale && !unavailable && (
         <p className="notice warning">
           The snapshot is stale. Refresh before relying on these values.
         </p>
@@ -628,6 +637,7 @@ export default function App() {
         <LiveDashboard
           snapshot={snapshot.data}
           loading={snapshot.isPending}
+          paused={snapshot.isPaused}
           failed={snapshot.isError}
           error={snapshot.error}
           onRefresh={() => {

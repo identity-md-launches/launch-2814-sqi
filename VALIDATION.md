@@ -8,7 +8,44 @@ The application uses only the supplied Sepolia addresses and repository ABIs. Th
 
 Consequential choices: one English dark theme; next eligible round plus one additional round of lead for automatic starts; exact quoted premium as maximum; a five-minute block-time deadline; 0.5% LP output tolerance; raw integer LP shares; a warning when the current round exceeds the frontier by more than three rounds; all-status policy history paginated five at a time with ID lookup. The deployed source's early-settlement and review behavior is explained alongside the requested full-window payout rule.
 
-## Commands and actual results
+## Offline retry revision — 2026-11-01
+
+Complete for the reported scope. Finding `74879ad8a5654b8e20e712d4666940f6f450dcd91c5c1d7f51bdeda401a775d6` reproduced against the unchanged submitted export at 390×844. After an initial RPC failure, setting the browser context offline and selecting Retry left “Reading Sepolia… / Refreshes every 30 seconds”, an enabled Refresh button and no `#live-error` after 10.5 seconds. The new regression failed on that state before the source was changed.
+
+At `web/src/App.tsx:640`, the snapshot query now passes `isPaused` into `LiveDashboard`. At `web/src/App.tsx:75`, paused reads join failures in the existing unavailable treatment; `:106` replaces the loading label with Offline, and `:132` renders “You are offline. Reconnect, then retry.” in the nearby status region. Retry remains enabled, uses the existing failed-button treatment and describes `live-error`. Cached values remain visible with their last-successful-read disclosure. The existing read deadline, RPCs, wallet transport, ABIs, addresses and deployment pins are unchanged. No contract, build configuration or dependency file was edited.
+
+The regression at `web/tests/browser.mjs:682` runs at 390×844 and 1440×900. It checks browser `navigator.onLine === false`, offline feedback within one second, persistence after 10.5 seconds, the enabled Retry control and its description, all six unavailable metrics, reconnection recovery, a paused refresh with cached values, and absence of page errors. The final full run measured offline feedback at 179ms and 261ms, respectively. Evidence, including the original failed observation and the complete final scenario results, is in `web/validation/offline-retry.json`. The review response is in `.imd-responses.json`.
+
+| Revision check | Actual result |
+| --- | --- |
+| `npm ci --no-audit --no-fund` with a temporary npm cache, in isolated frontend staging | Passed with the unchanged package manifest and lockfile. No dependencies or caches added to the repository. The first direct workspace typecheck lacked `tsc`; staging supplied it. |
+| `npm run typecheck` after the source fix | Passed, exit 0. |
+| `npm test` | Passed, 6/6 tests, including the existing deadline test. |
+| `npm run build` | Passed, exit 0, 884ms; rebuilt export copied to `dist/`, obsolete hashed JS removed. |
+| `node tests/browser.mjs <dist> <scratch-output> 'Browser offline retry'` | Failed as expected before the fix; passed after the fix at both widths, with cached-value and reconnect checks. |
+| `node tests/browser.mjs <dist> <scratch-output>` | Passed all 13 Chromium scenarios; 0 failed. Existing hung-RPC scenario measured 7.7s to the live-read error and 8.0s to the quote error. WebKit attempted but could not launch because browser runtime dependencies were unavailable. |
+| `npm run check:abis` | All five canonical ABI hashes match the unchanged deployment metadata. |
+| Pinned `taste.mjs --out test/scratch/taste --offline`, with staged Playwright explicitly supplied | 15/16 passed. Render, layout, targets, contrast, casing, tracking, eyebrows, typography, motion and share checks passed. The repeated-copy flag is the same actual RPC error in the Live state and deployment-verification regions. Both errors belong to separate retryable reads; retained within this focused revision. |
+| Browser tool, actual production `/preview/` | Inspected 390×844 first screen and 1440×900 Live state. Get quote returned the real owner-activation error beside Retry quote; Connect/Escape opened and closed the wallet sheet. All requested local resources returned 200; no console errors. |
+
+Build warnings remain the dependency client directives, an unused upstream worker module externalized for browser compatibility and a 676.56kB main JS chunk (197.95kB gzip). A first Chromium attempt closed before creating its context; subsequent launches, the regression and the full suite completed successfully. The final first-screen quote button ends at 824.39px in the 844px viewport. Axe found zero violations in the initial checked view. The full suite confirmed no horizontal overflow at 320, 390, 768 or 1440px and with 200% root-text enlargement.
+
+### Six-domain revision review
+
+The pinned Better Interface workflow and core principles were applied to the changed dashboard state. Existing design tokens and layout are retained; `DESIGN.md` describes the implemented paused state.
+
+| Domain | Coverage for this revision | Findings, fixes and limits |
+| --- | --- | --- |
+| Accessibility | Checked | High finding at `App.tsx:132`: a paused retry had no recoverable status. Reused the native button, polite status and `aria-describedby`; regression verifies the relationship. Initial-view axe passed. No screen-reader or forced-color session. |
+| Layout | Checked | Offline dashboard screenshots inspected at both reported widths; error text wraps without overflow. First-screen action inspected at 390px; existing grids and breakpoints retained. Native zoom and RTL not tested. |
+| Writing | Checked | Offline state states the cause and recovery action; paused reads no longer claim to be reading or refreshing every 30 seconds. Cached values are explicitly from the last successful read. |
+| Typography | Checked | Reused the existing small error/status text and button styles. Screenshots show whole, readable error text; current probe passes type sizes, faces and tracking. Physical-device font rendering not tested. |
+| Colors | Checked | Reused `--error`, `--error-bg` and failed-button styling; text, icon and label communicate the state alongside color. Rendered error colors confirmed in the browser; current probe contrast check passed. No new palette or theme. |
+| UI details | Checked | Confirmed initial read failure → paused retry → recovered read and cached read → paused refresh → recovery. Existing active-read and quote deadlines still pass. No new animation, surface or wallet behavior. WebKit remains unverified. |
+
+Screenshots inspected in `test/scratch/` include `offline-retry-390.png`, `offline-retry-1440.png`, `revision-mobile.png`, `revision-desktop.png` and the probe captures. These scratch files are intentionally excluded from submission. No chain state, balances or activation were fabricated; browser fixtures are test-only. No real wallet signature, physical-device, screen-reader or native zoom validation was performed. IPFS pinning and publication to the existing name remain the contributor publisher's handoff; this revision supplies the export and does not run publication commands.
+
+## Original implementation commands and results (historical)
 
 Commands below are repository-relative equivalents of the commands executed. npm dependencies and browser downloads were installed in temporary staging outside the repository; the same `web/` source and lockfile produced the delivered `dist/`. No generated dependency/cache directory is in the submission.
 

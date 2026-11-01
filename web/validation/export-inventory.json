@@ -6,24 +6,24 @@
       "sha256": "3b0a5fca3d17942cde889069889dedbbbd075e9b599968c82a95f4d944e9b345"
     },
     {
-      "path": "dist/assets/ccip-SEsY7MCN.js",
+      "path": "dist/assets/ccip-oD5raTk-.js",
       "bytes": 2840,
-      "sha256": "1b8cf7ee917d6ce770dbe6239c9c130944a848187d31df737a12b70cb9cb6798"
+      "sha256": "4ff040c4e88f68dde01d5913a99ab54706a38c0d013c735168d4e350c8901d02"
     },
     {
-      "path": "dist/assets/dist-DuNg6fmB.js",
+      "path": "dist/assets/dist-B3T5oDl7.js",
       "bytes": 99105,
-      "sha256": "cc79ef5929dfb7dae9c654fff463553bb582388dbcb620faa079362c033c24a9"
+      "sha256": "4e459353ea5d83a9a880f71f8214e9eed2efad9faa0f8fa8b28363062d980d8a"
     },
     {
-      "path": "dist/assets/index-C7NTtiEL.js",
-      "bytes": 670039,
-      "sha256": "48f50f286b413876f11f2d9fa4d6e0a0ce32d42823144d74243e4b77f13c0877"
+      "path": "dist/assets/index-D_kwIkT7.js",
+      "bytes": 676561,
+      "sha256": "9d00c73e33dc52859a714d8a9379d3e4fadadc6f516f901b7fe174f3c24fa7ca"
     },
     {
-      "path": "dist/assets/index-lhjQNt1C.css",
-      "bytes": 21157,
-      "sha256": "2e7d4fae53df9fa1959082c1fadfad58ae06ac4be8ec2c7335e5633fbd88915d"
+      "path": "dist/assets/index-Dx_XDP6X.css",
+      "bytes": 24025,
+      "sha256": "86503d411ec2b37d7edd1583817c57e41165768acfc07c9b90c92a216d29703b"
     },
     {
       "path": "dist/assets/inter-latin-Dx4kXJAl.woff2",
@@ -38,7 +38,7 @@
     {
       "path": "dist/index.html",
       "bytes": 1524,
-      "sha256": "b70bc22ab56cbba819d72bac894fc37366fc48f7541c6d3a68ba8a560f566652"
+      "sha256": "80302b10b1397c21a03182623daeedd15029efa6cd8f26b3f25a7b4157d5f1ce"
     },
     {
       "path": "dist/share.png",
@@ -71,24 +71,26 @@
       "sha256": "dcae4de88ebfa10cffa1fe28df13d7c8c0b40736ef2b704f1f2fc348e777e443"
     }
   ],
-  "exportBytes": 896514,
-  "sourceAndExportAndDocsBytesExcludingThisInventory": 1900845,
+  "exportBytes": 905904,
+  "sourceAndExportAndDocsBytesExcludingThisInventory": 1953852,
   "directoryBytesExcludingThisInventory": {
-    "web": 960675,
-    "dist": 896514
+    "web": 995366,
+    "dist": 905904
   },
   "submissionLimitBytes": 8388608,
-  "conservativeBundleEstimateBytes": 4850266,
+  "conservativeBundleEstimateBytesExcludingThisInventory": 3183990,
   "relativeIndexAssets": [
+    "./share.png",
     "./favicon.svg",
-    "./assets/index-C7NTtiEL.js",
-    "./assets/index-lhjQNt1C.css"
+    "./assets/index-D_kwIkT7.js",
+    "./assets/index-Dx_XDP6X.css"
   ],
   "runtimeAssetsComplete": true,
-  "generatedDependencyCacheDirectoriesPresent": false,
-  "ignoreFilesChanged": false,
-  "submodules": 0,
-  "existingTrackedFilesChanged": [
-    "README.md"
-  ]
+  "shareImagePixels": [
+    1200,
+    630
+  ],
+  "dependencyAndConfigurationFilesPreserved": true,
+  "publication": "Production export ready for existing-site publisher; no publication performed.",
+  "conservativeBundleEstimateBytes": 3186944
 }

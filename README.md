@@ -45,13 +45,15 @@ At the recorded live check on **2026-11-01 13:28 UTC**, block **12,041,301**, al
 
 ### Website checks actually run
 
-- Production build and TypeScript check passed; five unit tests passed, including exact amounts, all twelve threshold boundaries, start bounds and nonzero LP minimums.
-- Ten Chromium interaction scenarios passed against the production export at a `/preview/` subpath: reads/offline retry, forms, wallet discovery/rejection/network switching, exact approvals, open/deposit/redeem/settle/review calldata, receipt handling, code mismatch gating, keyboard and mobile layout. These use explicit offline fixtures; no real transaction is signed.
+- Production build and TypeScript check passed; six unit tests passed, including exact amounts, all twelve threshold boundaries, start bounds, nonzero LP minimums and read deadlines.
+- Thirteen Chromium interaction scenarios passed against the production export at a `/preview/` subpath: reads/offline retry, forms, wallet discovery/rejection/network switching, exact approvals, open/deposit/redeem/settle/review calldata, receipt handling, code mismatch gating, keyboard and mobile layout. These use explicit offline fixtures; no real transaction is signed.
 - Real Sepolia reads, an activation-blocked quote and production mobile/desktop screenshots were also inspected separately. Axe reported zero violations in the checked initial view. No horizontal overflow at 320, 390, 768 or 1440px, including the separate 200% root-text enlargement check.
-- The pinned taste probe passed 15/16 checks. Its one remaining flag mistakes the required header Connect button for a heading kicker; visual inspection confirmed a normal wallet utility. The repeated-copy finding and applicable accessibility/UI defects were fixed.
+- The pinned taste probe passed 15/16 checks in the offline revision run. Its remaining flag is the same real RPC error appearing for Live state and deployment verification; these independently retryable failures retain their messages. Layout, contrast, motion and share metadata passed.
 - WebKit was attempted but could not launch because required shared libraries are missing. Native mobile wallets, real passkeys, screen-reader sessions and native browser zoom were not tested. No production safety claim is made.
 
-Build warnings concern a 670kB main JavaScript chunk (about 196kB gzip), client-only directives in dependencies, and an externalized unused worker module in an upstream dependency. Chromium loaded the production assets without console or missing-resource errors.
+Build warnings concern a 677kB main JavaScript chunk (about 198kB gzip), client-only directives in dependencies, and an externalized unused worker module in an upstream dependency. Chromium loaded the production assets without console or missing-resource errors.
+
+The offline retry revision reproduces and fixes a paused React Query read that previously kept “Reading Sepolia…” visible indefinitely. Live state now shows “You are offline. Reconnect, then retry.” with an enabled Retry button and preserves any cached values as the last successful read. Active reads retain their eight-second deadline. Regression checks at 390×844 and 1440×900 confirm the error appears within one second, persists beyond 10.5 seconds and clears when the connection resumes. The reviewer response is in [.imd-responses.json](.imd-responses.json); current evidence is in [web/validation/offline-retry.json](web/validation/offline-retry.json). The refreshed `dist/` is ready for the existing site's publisher; this revision did not publish it or fabricate activation or balances.
 
 See [VALIDATION.md](VALIDATION.md) for commands, the six-domain review, findings and coverage limits, [DESIGN.md](DESIGN.md) for implemented tokens/components, and [web/validation/](web/validation/) for recorded evidence. This is worker validation, not independent certification.
 

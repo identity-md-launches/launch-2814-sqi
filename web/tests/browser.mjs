@@ -679,6 +679,79 @@ try {
     assert.equal(await page.locator(".metric .unavailable").count(), 0);
     await context.close();
   });
+  await test("Browser offline retry reports paused reads and recovers on reconnect", async () => {
+    const measurements = [];
+    for (const width of [390, 1440]) {
+      const s = state();
+      s.offline = true;
+      const { page, context, pageErrors } = await fixturePage(browser, s);
+      try {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+        const live = page.locator("#live");
+        const retry = live.getByRole("button", { name: "Retry", exact: true });
+        await retry.waitFor({ timeout: 12_000 });
+        await context.setOffline(true);
+        assert.equal(await page.evaluate(() => navigator.onLine), false);
+        const pausedStarted = Date.now();
+        await retry.click();
+        await live.locator("#live-error").filter({
+          hasText: "You are offline. Reconnect, then retry.",
+        }).waitFor({ timeout: 1_000 });
+        const offlineMessageMs = Date.now() - pausedStarted;
+        // Wait beyond the active read's eight-second deadline. A paused query
+        // never calls fetchSnapshot, so its promise deadline cannot help it.
+        await page.waitForTimeout(10_500);
+        const paused = await live.evaluate((section) => ({
+          status: section.querySelector(".data-status").textContent,
+          error: section.querySelector("#live-error")?.textContent ?? null,
+          button: section.querySelector("button").textContent,
+          describedBy: section.querySelector("button").getAttribute("aria-describedby"),
+          disabled: section.querySelector("button").disabled,
+        }));
+        measurements.push({ width, offlineMessageMs, waitedOfflineMs: 10_500, ...paused });
+        assert.match(
+          paused.error ?? "",
+          /You are offline\. Reconnect, then retry\./,
+          JSON.stringify(paused),
+        );
+        assert.doesNotMatch(paused.status, /Reading Sepolia|Refreshes every/);
+        assert.equal(paused.describedBy, "live-error");
+        assert.equal(paused.button.trim(), "Retry");
+        assert.equal(paused.disabled, false);
+        assert.equal(await live.locator(".metric .unavailable").count(), 6);
+        assert.ok(await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ));
+        mkdirSync(resolve(output, ".."), { recursive: true });
+        await retry.focus();
+        await live.screenshot({ path: resolve(output, "..", `offline-retry-${width}.png`) });
+        s.offline = false;
+        await context.setOffline(false);
+        await page.waitForFunction(
+          () => document.querySelectorAll(".metric .unavailable").length === 0,
+        );
+        await live.getByRole("button", { name: "Refresh", exact: true }).waitFor();
+        assert.equal(await live.locator("#live-error").count(), 0);
+        // A paused refresh must also identify the connection problem when a
+        // previous snapshot exists; the cached values must remain available.
+        const assets = await live.locator(".metric").nth(3).innerText();
+        await context.setOffline(true);
+        await live.getByRole("button", { name: "Refresh", exact: true }).click();
+        await live.locator("#live-error").filter({
+          hasText: "You are offline. Reconnect, then retry.",
+        }).waitFor({ timeout: 1_000 });
+        assert.match(await live.locator("#live-error").innerText(), /last successful read/);
+        assert.equal(await live.locator(".metric").nth(3).innerText(), assets);
+        await context.setOffline(false);
+        await live.getByRole("button", { name: "Refresh", exact: true }).waitFor();
+        assert.equal(await live.locator("#live-error").count(), 0);
+        assert.deepEqual(pageErrors, []);
+      } finally {
+        await context.close();
+      }
+    }
+    return { measurements };
+  });
   await test("Phone wallet sheet uses four deep links, local marks and focus return", async () => {
     const { page, context } = await fixturePage(browser, state(), {
       mobile: true,
